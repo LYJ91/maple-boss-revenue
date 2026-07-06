@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { BossEntry, Character, Difficulty } from './types';
+import type { BossEntry, Character, CharacterMeta, Difficulty } from './types';
 import { BOSS_MAP, DATA_SOURCE, RULES } from './data/crystalData';
 import type { BossPreset } from './data/presets';
 import { computeAccount } from './lib/calc';
@@ -10,6 +10,7 @@ import { CharacterSidebar } from './components/CharacterSidebar';
 import { BossPanel } from './components/BossPanel';
 import { PriceTable } from './components/PriceTable';
 import { LimitModal } from './components/LimitModal';
+import { ImportModal } from './components/ImportModal';
 
 let idCounter = 0;
 function newId(): string {
@@ -21,6 +22,7 @@ export default function App() {
   const [state, setState] = useState<AppState>(loadState);
   const [showPrices, setShowPrices] = useState(false);
   const [showWeeklyLimit, setShowWeeklyLimit] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const today = useMemo(todayISO, []);
 
   useEffect(() => {
@@ -49,6 +51,20 @@ export default function App() {
       return {
         characters: [...prev.characters, character],
         selectedId: character.id,
+      };
+    });
+  };
+
+  const addImportedCharacters = (list: { name: string; meta: CharacterMeta }[]) => {
+    setState((prev) => {
+      const room = RULES.maxCharacters - prev.characters.length;
+      const toAdd = list.slice(0, room).map(
+        ({ name, meta }): Character => ({ id: newId(), name, entries: [], meta }),
+      );
+      if (toAdd.length === 0) return prev;
+      return {
+        characters: [...prev.characters, ...toAdd],
+        selectedId: toAdd[toAdd.length - 1].id,
       };
     });
   };
@@ -194,6 +210,7 @@ export default function App() {
           summaries={summary.characters}
           selectedId={state.selectedId}
           onAdd={addCharacter}
+          onImport={() => setShowImport(true)}
           onSelect={selectCharacter}
           onRemove={removeCharacter}
           onDuplicate={duplicateCharacter}
@@ -261,6 +278,14 @@ export default function App() {
 
       {showPrices && <PriceTable today={today} onClose={() => setShowPrices(false)} />}
       {showWeeklyLimit && <LimitModal onClose={() => setShowWeeklyLimit(false)} />}
+      {showImport && (
+        <ImportModal
+          remainingSlots={RULES.maxCharacters - state.characters.length}
+          existingNames={state.characters.map((c) => c.name)}
+          onAdd={addImportedCharacters}
+          onClose={() => setShowImport(false)}
+        />
+      )}
     </div>
   );
 }

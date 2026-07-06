@@ -72,13 +72,26 @@ export function BossPanel({
   return (
     <div className="boss-panel">
       <div className="panel-head">
-        <input
-          className="name-input"
-          value={character.name}
-          onChange={(e) => onRename(e.target.value)}
-          maxLength={20}
-          aria-label="캐릭터 이름"
-        />
+        <div className="panel-identity">
+          {character.meta?.image && (
+            <img src={character.meta.image} alt="" className="panel-avatar" />
+          )}
+          <div>
+            <input
+              className="name-input"
+              value={character.name}
+              onChange={(e) => onRename(e.target.value)}
+              maxLength={20}
+              aria-label="캐릭터 이름"
+            />
+            {character.meta?.job && (
+              <div className="panel-meta">
+                {character.meta.world} · {character.meta.job}
+                {character.meta.level != null && ` · Lv.${character.meta.level}`}
+              </div>
+            )}
+          </div>
+        </div>
         <div className="panel-stats">
           <span className="chip lg">
             주간 <strong>{formatMeso(summary?.weeklyRevenue ?? 0)}</strong> 메소

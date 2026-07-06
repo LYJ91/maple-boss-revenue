@@ -32,8 +32,17 @@ export interface BossEntry {
   clearsPerWeek: number;
 }
 
+/** 넥슨 API에서 불러온 캐릭터 부가 정보 (수동 추가 캐릭터는 없음) */
+export interface CharacterMeta {
+  world?: string;
+  job?: string;
+  level?: number;
+  image?: string;
+}
+
 export interface Character {
   id: string;
   name: string;
   entries: BossEntry[];
+  meta?: CharacterMeta;
 }

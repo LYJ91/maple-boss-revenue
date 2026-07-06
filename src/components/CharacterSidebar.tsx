@@ -8,6 +8,7 @@ interface Props {
   summaries: CharacterSummary[];
   selectedId: string | null;
   onAdd(): void;
+  onImport(): void;
   onSelect(id: string): void;
   onRemove(id: string): void;
   onDuplicate(id: string): void;
@@ -18,6 +19,7 @@ export function CharacterSidebar({
   summaries,
   selectedId,
   onAdd,
+  onImport,
   onSelect,
   onRemove,
   onDuplicate,
@@ -34,9 +36,14 @@ export function CharacterSidebar({
             {characters.length}/{RULES.maxCharacters}
           </span>
         </h2>
-        <button className="btn primary sm" onClick={onAdd} disabled={full}>
-          + 추가
-        </button>
+        <span className="sidebar-actions">
+          <button className="btn sm" onClick={onImport} disabled={full}>
+            불러오기
+          </button>
+          <button className="btn primary sm" onClick={onAdd} disabled={full}>
+            + 추가
+          </button>
+        </span>
       </div>
 
       <div className="character-list">
@@ -65,7 +72,15 @@ export function CharacterSidebar({
               }}
             >
               <div className="character-top">
-                <span className="character-name">{character.name}</span>
+                <span className="character-name">
+                  {character.meta?.image && (
+                    <img src={character.meta.image} alt="" className="character-avatar" />
+                  )}
+                  {character.name}
+                  {character.meta?.level != null && (
+                    <span className="character-level"> Lv.{character.meta.level}</span>
+                  )}
+                </span>
                 <span className="character-actions">
                   <button
                     className="icon-btn"

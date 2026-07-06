@@ -16,8 +16,10 @@ npm run preview    # 빌드 결과 미리보기
 npm test           # 계산 로직 단위 테스트
 ```
 
-정적 사이트이므로 `dist/` 폴더를 아무 정적 호스팅(Nginx, GitHub Pages, Cloudflare Pages 등)에
-올리면 배포됩니다. 서버/DB 불필요.
+Vercel에 배포되어 있습니다 (https://maple-boss.vercel.app). `main` 브랜치 push 시 자동
+배포됩니다. 캐릭터 조회 기능은 Vercel 서버리스 함수(`api/`)를 사용하므로 환경변수
+`NEXON_API_KEY`(넥슨 Open API 키)가 필요합니다. 로컬에서 API까지 테스트하려면
+`npx vercel dev`를 사용하세요 (`npx vercel env pull .env.local`로 키 동기화).
 
 ## 기능
 
@@ -28,6 +30,11 @@ npm test           # 계산 로직 단위 테스트
   현재 설정과 일치하는 프리셋은 자동 강조. 구성은 `src/data/presets.ts`에서 관리
   (나무위키 '보스돌이' 문서 기준, 수익 역산 검증)
 - 주간 보스 12개 처치 제한: 13번째 주간 보스 선택 시 모달로 안내하고 추가를 차단
+- 캐릭터 불러오기 (넥슨 Open API 연동):
+  - 캐릭터명 검색 — 사이트 API 키(서버 환경변수 `NEXON_API_KEY`)로 조회, 캐릭터
+    이미지/월드/직업/레벨 표시. 서버리스 프록시 `api/character.ts` 경유로 키 비노출
+  - 내 계정 캐릭터 — 방문자가 본인 API 키를 입력하면 계정 전체 캐릭터 목록을
+    불러와 선택 추가 (`api/account.ts`, 키는 전달만 하고 저장하지 않음)
 - 주간 수익 / 월간 수익(+월간 보스) / 주간 판매 결정 수 자동 집계
 - 결정석 가격표 모달 (일일/주간/월간 구분, 조회 날짜 기준 가격)
 
@@ -62,9 +69,6 @@ npm test           # 계산 로직 단위 테스트
 
 ## 로드맵 (선택 확장)
 
-- 넥슨 Open API 캐릭터 연동 (닉네임 검색, 캐릭터 이미지/레벨 표시)
-  — [https://openapi.nexon.com](https://openapi.nexon.com) 에서 API 키 발급 필요.
-  키 노출 방지를 위해 서버 프록시(또는 serverless function) 필요.
 - 공지 API(`/maplestory/v1/notice-update`) 기반 가격 변경 자동 감지 + 관리자 승인 반영
 
 ## 면책
