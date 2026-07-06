@@ -42,3 +42,15 @@ export async function fetchAccountCharacters(
   );
   return characters;
 }
+
+/**
+ * 캐릭터 상세 파트 일괄 조회.
+ * 응답은 { 파트명: 넥슨 원본 응답 } 형태이며, 실패한 파트는 { error }가 담긴다.
+ */
+export type DetailData = Record<string, any>;
+
+export function fetchDetail(ocid: string, parts: string[]): Promise<DetailData> {
+  return request<DetailData>(
+    `/api/detail?ocid=${encodeURIComponent(ocid)}&parts=${parts.join(',')}`,
+  );
+}

@@ -11,6 +11,8 @@ import { BossPanel } from './components/BossPanel';
 import { PriceTable } from './components/PriceTable';
 import { LimitModal } from './components/LimitModal';
 import { ImportModal } from './components/ImportModal';
+import { CharacterPage } from './pages/CharacterPage';
+import { gotoCharacter, gotoHome, useRoute } from './lib/router';
 
 let idCounter = 0;
 function newId(): string {
@@ -18,7 +20,33 @@ function newId(): string {
   return `c-${Date.now().toString(36)}-${idCounter}`;
 }
 
+function HeaderSearch() {
+  const [term, setTerm] = useState('');
+  const submit = () => {
+    if (term.trim()) {
+      gotoCharacter(term);
+      setTerm('');
+    }
+  };
+  return (
+    <div className="header-search">
+      <input
+        className="text-input sm"
+        placeholder="캐릭터 검색"
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        aria-label="캐릭터 검색"
+      />
+      <button className="btn sm" onClick={submit} disabled={!term.trim()}>
+        검색
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
+  const route = useRoute();
   const [state, setState] = useState<AppState>(loadState);
   const [showPrices, setShowPrices] = useState(false);
   const [showWeeklyLimit, setShowWeeklyLimit] = useState(false);
@@ -177,31 +205,52 @@ export default function App() {
     }));
   };
 
+  const isDetail = route.view === 'character';
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="title-block">
-          <h1>메이플 보스 결정석 수익 계산기</h1>
+          <h1 className={isDetail ? 'clickable' : undefined} onClick={isDetail ? gotoHome : undefined}>
+            메이플 보스 결정석 수익 계산기
+          </h1>
           <p className="subtitle">
             강렬한 힘의 결정 주간·월간 수익 계산 — 공식 공지 기준 최신 가격 반영
           </p>
         </div>
         <div className="header-actions">
-          <a
-            className="source-badge"
-            href={DATA_SOURCE.url}
-            target="_blank"
-            rel="noreferrer"
-            title="가격 출처 공지 열기"
-          >
-            {DATA_SOURCE.label}
-          </a>
-          <button className="btn ghost" onClick={() => setShowPrices(true)}>
-            결정석 가격표
-          </button>
+          <HeaderSearch />
+          {isDetail ? (
+            <button className="btn ghost" onClick={gotoHome}>
+              계산기로
+            </button>
+          ) : (
+            <>
+              <a
+                className="source-badge"
+                href={DATA_SOURCE.url}
+                target="_blank"
+                rel="noreferrer"
+                title="가격 출처 공지 열기"
+              >
+                {DATA_SOURCE.label}
+              </a>
+              <button className="btn ghost" onClick={() => setShowPrices(true)}>
+                결정석 가격표
+              </button>
+            </>
+          )}
         </div>
       </header>
 
+      {route.view === 'character' ? (
+        <CharacterPage
+          name={route.name}
+          initialTab={route.tab}
+          onAddToCalc={(c) => addImportedCharacters([c])}
+        />
+      ) : (
+        <>
       <SummaryBar summary={summary} />
 
       <main className="layout">
@@ -285,6 +334,8 @@ export default function App() {
           onAdd={addImportedCharacters}
           onClose={() => setShowImport(false)}
         />
+      )}
+        </>
       )}
     </div>
   );
