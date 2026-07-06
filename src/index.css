@@ -317,15 +317,44 @@ body {
   gap: 7px;
 }
 
-.character-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: center top;
+/* 캐릭터 아바타 (확대 크롭) */
+.avatar-frame {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+  flex-shrink: 0;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  flex-shrink: 0;
+}
+
+.avatar-frame > img {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  image-rendering: pixelated;
+  pointer-events: none;
+  max-width: none;
+}
+
+.avatar-frame.face {
+  border-radius: 50%;
+}
+
+.avatar-frame.face > img {
+  width: 235%;
+  top: -52%;
+}
+
+.avatar-frame.full {
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 85%, rgba(245, 166, 35, 0.14), transparent 65%),
+    var(--bg-soft);
+}
+
+.avatar-frame.full > img {
+  width: 150%;
+  bottom: 2%;
 }
 
 .character-level {
@@ -433,17 +462,6 @@ body {
   align-items: center;
   gap: 12px;
   min-width: 0;
-}
-
-.panel-avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
-  object-fit: cover;
-  object-position: center top;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
 }
 
 .panel-meta {
@@ -1020,16 +1038,6 @@ body {
   padding: 12px 14px;
 }
 
-.lookup-image {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  object-position: center top;
-  border-radius: 12px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-}
-
 .lookup-info {
   display: flex;
   flex-direction: column;
@@ -1186,19 +1194,6 @@ body {
   gap: 18px;
   align-items: center;
   min-width: 0;
-}
-
-.hero-image {
-  width: 110px;
-  height: 110px;
-  object-fit: contain;
-  object-position: center bottom;
-  padding: 6px;
-  border-radius: 16px;
-  background: radial-gradient(circle at 50% 80%, rgba(245, 166, 35, 0.12), transparent 65%), var(--bg-soft);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-  image-rendering: pixelated;
 }
 
 .hero-profile {

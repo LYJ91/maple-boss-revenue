@@ -2,6 +2,7 @@ import type { Character } from '../types';
 import type { CharacterSummary } from '../lib/calc';
 import { RULES } from '../data/crystalData';
 import { formatMeso } from '../lib/format';
+import { CharacterAvatar } from './CharacterAvatar';
 
 interface Props {
   characters: Character[];
@@ -74,7 +75,7 @@ export function CharacterSidebar({
               <div className="character-top">
                 <span className="character-name">
                   {character.meta?.image && (
-                    <img src={character.meta.image} alt="" className="character-avatar" />
+                    <CharacterAvatar src={character.meta.image} size={32} />
                   )}
                   {character.name}
                   {character.meta?.level != null && (

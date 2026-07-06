@@ -3,6 +3,7 @@ import type { CharacterMeta } from '../types';
 import { fetchDetail, searchCharacter, type DetailData } from '../lib/nexon';
 import { gotoHome } from '../lib/router';
 import { formatMeso } from '../lib/format';
+import { CharacterAvatar } from '../components/CharacterAvatar';
 import { EquipmentTab } from '../components/character/EquipmentTab';
 import { StatTab } from '../components/character/StatTab';
 import { UnionTab } from '../components/character/UnionTab';
@@ -174,9 +175,7 @@ export function CharacterPage({
     <div className="character-page">
       <div className="detail-hero">
         <div className="hero-left">
-          {b.character_image && (
-            <img src={b.character_image} alt={b.character_name} className="hero-image" />
-          )}
+          <CharacterAvatar src={b.character_image} size={120} variant="full" />
           <div className="hero-profile">
             <div className="hero-name-row">
               <h2>{b.character_name}</h2>

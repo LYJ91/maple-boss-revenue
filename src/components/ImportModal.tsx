@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CharacterMeta } from '../types';
 import { RULES } from '../data/crystalData';
 import { fetchAccountCharacters, searchCharacter, type LookupCharacter } from '../lib/nexon';
+import { CharacterAvatar } from './CharacterAvatar';
 
 interface Props {
   /** 추가 가능한 남은 캐릭터 슬롯 수 */
@@ -112,7 +113,7 @@ function SearchTab({
 
       {result && (
         <div className="lookup-card">
-          {result.image && <img src={result.image} alt="" className="lookup-image" />}
+          {result.image && <CharacterAvatar src={result.image} size={64} />}
           <div className="lookup-info">
             <strong>{result.name}</strong>
             <span className="lookup-sub">

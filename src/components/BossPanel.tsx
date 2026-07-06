@@ -4,6 +4,7 @@ import { BOSS_PRESETS, type BossPreset } from '../data/presets';
 import type { CharacterSummary } from '../lib/calc';
 import { crystalValue, priceAt } from '../lib/calc';
 import { formatFull, formatMeso } from '../lib/format';
+import { CharacterAvatar } from './CharacterAvatar';
 
 const GROUPS: { reset: ResetType; title: string; desc: string }[] = [
   {
@@ -74,7 +75,7 @@ export function BossPanel({
       <div className="panel-head">
         <div className="panel-identity">
           {character.meta?.image && (
-            <img src={character.meta.image} alt="" className="panel-avatar" />
+            <CharacterAvatar src={character.meta.image} size={54} />
           )}
           <div>
             <input
