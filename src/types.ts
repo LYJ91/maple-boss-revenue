@@ -46,3 +46,24 @@ export interface Character {
   entries: BossEntry[];
   meta?: CharacterMeta;
 }
+
+/* ───── 주간 체크리스트 ───── */
+
+/** 주간 리셋 요일 (월요일: 길드 콘텐츠 / 목요일: 주간 보스·에픽 던전 등) */
+export type ResetDay = 'mon' | 'thu';
+
+export interface TodoItem {
+  id: string;
+  label: string;
+  resetDay: ResetDay;
+  /** 기본 제공 항목 여부 (커스텀 항목과 구분용) */
+  builtin?: boolean;
+}
+
+export interface TodoCharacter {
+  id: string;
+  name: string;
+  meta?: CharacterMeta;
+  /** 이 캐릭터에서 사용하지 않는(비활성) 체크리스트 항목 id 목록 */
+  disabledItemIds: string[];
+}

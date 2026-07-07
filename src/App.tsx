@@ -12,7 +12,15 @@ import { PriceTable } from './components/PriceTable';
 import { LimitModal } from './components/LimitModal';
 import { ImportModal } from './components/ImportModal';
 import { CharacterPage } from './pages/CharacterPage';
-import { gotoCharacter, gotoHome, useRoute } from './lib/router';
+import { TodoPage } from './pages/TodoPage';
+import {
+  gotoCharacter,
+  gotoHome,
+  gotoLookup,
+  gotoTodo,
+  useRoute,
+  type Route,
+} from './lib/router';
 
 let idCounter = 0;
 function newId(): string {
@@ -41,6 +49,65 @@ function HeaderSearch() {
       <button className="btn sm" onClick={submit} disabled={!term.trim()}>
         검색
       </button>
+    </div>
+  );
+}
+
+type MainTab = 'calc' | 'equip' | 'todo';
+
+function activeTab(route: Route): MainTab {
+  if (route.view === 'todo') return 'todo';
+  if (route.view === 'character' || route.view === 'lookup') return 'equip';
+  return 'calc';
+}
+
+function MainNav({ route }: { route: Route }) {
+  const current = activeTab(route);
+  const tabs: { key: MainTab; label: string; go(): void }[] = [
+    { key: 'calc', label: '보스수익', go: gotoHome },
+    { key: 'equip', label: '장비확인', go: gotoLookup },
+    { key: 'todo', label: '체크리스트', go: gotoTodo },
+  ];
+  return (
+    <nav className="main-nav" aria-label="주요 기능">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          className={'main-nav-tab' + (current === t.key ? ' on' : '')}
+          onClick={t.go}
+        >
+          {t.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function LookupPage() {
+  const [term, setTerm] = useState('');
+  const submit = () => {
+    if (term.trim()) gotoCharacter(term);
+  };
+  return (
+    <div className="empty-board lookup-page">
+      <h2>장비 확인</h2>
+      <p>
+        캐릭터명을 검색하면 장비 · 스탯 · 유니온 · 스킬 등<br />
+        캐릭터 상세 정보를 확인할 수 있습니다.
+      </p>
+      <div className="search-row lookup-search">
+        <input
+          className="text-input"
+          placeholder="캐릭터명을 입력하세요"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          autoFocus
+        />
+        <button className="btn primary" onClick={submit} disabled={!term.trim()}>
+          검색
+        </button>
+      </div>
     </div>
   );
 }
@@ -205,13 +272,13 @@ export default function App() {
     }));
   };
 
-  const isDetail = route.view === 'character';
+  const isHome = route.view === 'home';
 
   return (
     <div className="app">
       <header className="app-header">
         <div className="title-block">
-          <h1 className={isDetail ? 'clickable' : undefined} onClick={isDetail ? gotoHome : undefined}>
+          <h1 className={!isHome ? 'clickable' : undefined} onClick={!isHome ? gotoHome : undefined}>
             메이플 보스 결정석 수익 계산기
           </h1>
           <p className="subtitle">
@@ -220,11 +287,7 @@ export default function App() {
         </div>
         <div className="header-actions">
           <HeaderSearch />
-          {isDetail ? (
-            <button className="btn ghost" onClick={gotoHome}>
-              계산기로
-            </button>
-          ) : (
+          {isHome && (
             <>
               <a
                 className="source-badge"
@@ -243,12 +306,18 @@ export default function App() {
         </div>
       </header>
 
+      <MainNav route={route} />
+
       {route.view === 'character' ? (
         <CharacterPage
           name={route.name}
           initialTab={route.tab}
           onAddToCalc={(c) => addImportedCharacters([c])}
         />
+      ) : route.view === 'lookup' ? (
+        <LookupPage />
+      ) : route.view === 'todo' ? (
+        <TodoPage />
       ) : (
         <>
       <SummaryBar summary={summary} />

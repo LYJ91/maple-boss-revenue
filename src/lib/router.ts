@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react';
 
 export type Route =
   | { view: 'home' }
+  | { view: 'lookup' }
+  | { view: 'todo' }
   | { view: 'character'; name: string; tab?: string };
 
 function parse(): Route {
-  const match = window.location.hash.match(/^#\/c\/([^?]+)(?:\?(.*))?$/);
+  const hash = window.location.hash;
+  const match = hash.match(/^#\/c\/([^?]+)(?:\?(.*))?$/);
   if (match) {
     const query = new URLSearchParams(match[2] ?? '');
     return {
@@ -14,6 +17,8 @@ function parse(): Route {
       tab: query.get('tab') ?? undefined,
     };
   }
+  if (hash.startsWith('#/lookup')) return { view: 'lookup' };
+  if (hash.startsWith('#/todo')) return { view: 'todo' };
   return { view: 'home' };
 }
 
@@ -29,6 +34,14 @@ export function useRoute(): Route {
 
 export function gotoCharacter(name: string) {
   window.location.hash = `#/c/${encodeURIComponent(name.trim())}`;
+}
+
+export function gotoLookup() {
+  window.location.hash = '#/lookup';
+}
+
+export function gotoTodo() {
+  window.location.hash = '#/todo';
 }
 
 export function gotoHome() {
