@@ -7,6 +7,8 @@ import { loadState, saveState, type AppState } from './lib/storage';
 import { loadTodoState } from './lib/todoStorage';
 import {
   completedBossKeys,
+  entriesEqual,
+  entriesFromSchedule,
   fetchScheduler,
   type SchedulerState,
 } from './lib/scheduler';
@@ -202,29 +204,49 @@ export default function App() {
     ? summary.characters.find((s) => s.id === selected.id)
     : undefined;
 
-  // 선택한 캐릭터의 이번 주 보스 처치 현황 조회 (API 연동 캐릭터만)
-  const selectedOcid = selected?.meta?.ocid;
-  const selectedAccountId = selected?.meta?.accountId;
+  // 연동 캐릭터 전체의 이번 주 처치 현황을 조회해 보스 선택(entries)에 자동 반영한다.
+  // 이렇게 해야 "주간 보스 n/12"와 총 수익이 실제 처치 기준으로 계산된다.
+  const linkedKey = state.characters
+    .map((c) => `${c.id}:${c.meta?.ocid ?? ''}:${c.meta?.accountId ?? ''}`)
+    .join('|');
   useEffect(() => {
-    if (route.view !== 'home' || !selected || !selectedOcid || !selectedAccountId) {
-      return;
-    }
-    const account = loadTodoState().accounts.find((a) => a.id === selectedAccountId);
-    if (!account) return;
+    if (route.view !== 'home') return;
+    const accounts = new Map(loadTodoState().accounts.map((a) => [a.id, a]));
     let cancelled = false;
-    const charId = selected.id;
-    fetchScheduler(selectedOcid, account.apiKey)
-      .then((st) => {
-        if (!cancelled) setSchedules((prev) => ({ ...prev, [charId]: st }));
-      })
-      .catch(() => {
-        // 조회 실패 시 처치 현황 표시만 생략한다
+
+    const applyCleared = (charId: string, st: SchedulerState) => {
+      setState((prev) => {
+        const index = prev.characters.findIndex((c) => c.id === charId);
+        if (index < 0) return prev;
+        const character = prev.characters[index];
+        const next = entriesFromSchedule(character.entries, st);
+        if (entriesEqual(character.entries, next)) return prev;
+        const characters = [...prev.characters];
+        characters[index] = { ...character, entries: next };
+        return { ...prev, characters };
       });
+    };
+
+    for (const c of state.characters) {
+      const ocid = c.meta?.ocid;
+      const account = c.meta?.accountId ? accounts.get(c.meta.accountId) : undefined;
+      if (!ocid || !account) continue;
+      const charId = c.id;
+      fetchScheduler(ocid, account.apiKey)
+        .then((st) => {
+          if (cancelled) return;
+          setSchedules((prev) => ({ ...prev, [charId]: st }));
+          applyCleared(charId, st);
+        })
+        .catch(() => {
+          // 조회 실패 시 처치 현황 반영만 생략한다
+        });
+    }
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.view, selected?.id, selectedOcid, selectedAccountId]);
+  }, [route.view, linkedKey]);
 
   const selectedSchedule = selected ? schedules[selected.id] : undefined;
   const clearedBossKeys = useMemo(
