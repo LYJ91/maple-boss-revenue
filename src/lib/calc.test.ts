@@ -149,6 +149,10 @@ describe('computeAccount', () => {
     expect(s.weeklyLostToWorldCap).toBe(0);
     expect(s.capGroups).toBe(2);
     expect(s.weeklyRevenue).toBe(s.weeklyRevenueUncapped);
+    expect(s.groups).toEqual([
+      { accountId: 'acc-1', world: '루나', produced: 49, sold: 49 },
+      { accountId: 'acc-2', world: '루나', produced: 49, sold: 49 },
+    ]);
 
     // 같은 계정의 다른 월드도 각각 90개 제한을 가진다
     const c3: Character = {

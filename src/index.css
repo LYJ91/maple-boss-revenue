@@ -591,6 +591,18 @@ body {
   border: 1px solid rgba(91, 141, 255, 0.25);
 }
 
+/* 판매 제한 그룹별 현황 칩 */
+.cap-groups {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 6px 0 2px;
+}
+
+.cap-group-chip {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ───── 넥슨 API 처치 현황 표시 ───── */
 .chip.lg.sync {
   color: #a9c2ff;

@@ -188,6 +188,14 @@ export default function App() {
     [state.characters, today],
   );
 
+  // 판매 제한 그룹 표시용 계정 이름 (체크리스트에서 등록한 계정)
+  const accountLabels = useMemo(
+    () => new Map(loadTodoState().accounts.map((a) => [a.id, a.label])),
+    // 보스수익 탭에 들어올 때마다 최신 계정 목록을 다시 읽는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [route.view],
+  );
+
   const selected =
     state.characters.find((c) => c.id === state.selectedId) ?? null;
   const selectedSummary = selected
@@ -409,7 +417,7 @@ export default function App() {
         <TodoPage />
       ) : (
         <>
-      <SummaryBar summary={summary} />
+      <SummaryBar summary={summary} accountLabels={accountLabels} />
 
       <main className="layout">
         <CharacterSidebar
