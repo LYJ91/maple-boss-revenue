@@ -132,7 +132,7 @@ export default function App() {
     saveState(state);
   }, [state]);
 
-  // 보스수익 탭 진입 시 체크리스트 캐릭터를 목록에 동기화 (이름 기준, 남는 슬롯만큼)
+  // 보스수익 탭 진입 시 체크리스트 캐릭터를 목록에 동기화 (ocid/이름 기준)
   useEffect(() => {
     if (route.view !== 'home') return;
     const todo = loadTodoState();
@@ -140,7 +140,10 @@ export default function App() {
       let changed = false;
       // 이미 있는 캐릭터에는 ocid/계정 메타를 보강해 API 연동을 살린다
       const characters = prev.characters.map((c) => {
-        const t = todo.characters.find((tc) => tc.name === c.name);
+        const t = todo.characters.find(
+          (tc) =>
+            (c.meta?.ocid && tc.meta?.ocid === c.meta.ocid) || tc.name === c.name,
+        );
         if (
           t?.meta?.ocid &&
           (c.meta?.ocid !== t.meta.ocid || c.meta?.accountId !== t.meta.accountId)
@@ -150,10 +153,17 @@ export default function App() {
         }
         return c;
       });
+      const existingOcids = new Set(
+        characters.map((c) => c.meta?.ocid).filter(Boolean),
+      );
       const existingNames = new Set(characters.map((c) => c.name));
       const room = Math.max(0, RULES.maxCharacters - characters.length);
       const toAdd = todo.characters
-        .filter((tc) => !existingNames.has(tc.name))
+        .filter(
+          (tc) =>
+            !(tc.meta?.ocid && existingOcids.has(tc.meta.ocid)) &&
+            !existingNames.has(tc.name),
+        )
         .slice(0, room)
         .map(
           (tc): Character => ({

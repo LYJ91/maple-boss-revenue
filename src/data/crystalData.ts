@@ -24,8 +24,8 @@ export const RULES = {
   worldWeeklySellLimit: 90,
   /** 캐릭터당 주간 보스 결정 판매 개수 제한 */
   weeklyBossSellLimitPerCharacter: 12,
-  /** 계산기에서 관리할 최대 캐릭터 수 */
-  maxCharacters: 12,
+  /** 계산기에서 관리할 최대 캐릭터 수 (체크리스트 연동 캐릭터를 수용할 만큼 넉넉히) */
+  maxCharacters: 30,
   /** 월간 수익 계산 시 주간 수익에 곱하는 주 수 */
   weeksPerMonth: 4,
   maxPartySize: 6,

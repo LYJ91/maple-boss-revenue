@@ -4,6 +4,13 @@ import { weekKey } from './week';
 const STORAGE_KEY = 'maple-boss-revenue:todo:v1';
 
 /**
+ * 저장 데이터 스키마 버전.
+ * v2: '플래그' 항목 제거 (요청에 따라 기존 저장분에서 일괄 삭제.
+ *     마이그레이션 후 다시 추가한 항목은 유지된다.)
+ */
+const SCHEMA_VERSION = 2;
+
+/**
  * 체크 상태: `${itemId}:${characterId}` → 체크한 주차 키(YYYY-MM-DD).
  * 현재 주차 키와 다르면 리셋된 것으로 보고 미체크 취급한다.
  */
@@ -33,10 +40,14 @@ export function loadTodoState(): TodoState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<TodoState>;
+      const parsed = JSON.parse(raw) as Partial<TodoState> & { version?: number };
       if (Array.isArray(parsed.items) && Array.isArray(parsed.characters)) {
+        let items = parsed.items;
+        if ((parsed.version ?? 1) < 2) {
+          items = items.filter((i) => i.label !== '플래그');
+        }
         return {
-          items: parsed.items,
+          items,
           characters: parsed.characters.map((c) => ({
             ...c,
             disabledItemIds: Array.isArray(c.disabledItemIds)
@@ -59,7 +70,10 @@ export function loadTodoState(): TodoState {
 
 export function saveTodoState(state: TodoState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pruneChecks(state)));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...pruneChecks(state), version: SCHEMA_VERSION }),
+    );
   } catch {
     // 저장 실패(시크릿 모드 등)는 치명적이지 않으므로 무시
   }
