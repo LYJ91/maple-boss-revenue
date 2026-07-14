@@ -25,8 +25,7 @@ const fmtPct = (p: number) => {
 
 const fmtTries = (t: number) => {
   if (!Number.isFinite(t)) return '개선 불가';
-  if (t >= 1000) return '1,000회+';
-  if (t >= 10) return `약 ${Math.round(t)}회`;
+  if (t >= 10) return `약 ${Math.round(t).toLocaleString('ko-KR')}회`;
   return `약 ${t.toFixed(1)}회`;
 };
 
