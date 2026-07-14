@@ -470,9 +470,10 @@ export default function App() {
             집계합니다.
           </li>
           <li>
-            결정석은 월드당 주 {RULES.worldWeeklySellLimit}개까지만 판매
-            가능하므로, 초과 생산 시 가격 높은 순으로{' '}
-            {RULES.worldWeeklySellLimit}개만 집계합니다.
+            결정석은 계정×월드당 주 {RULES.worldWeeklySellLimit}개까지만 판매
+            가능하므로, 그룹별 초과 생산 시 가격 높은 순으로{' '}
+            {RULES.worldWeeklySellLimit}개만 집계합니다. 계정을 여러 개 연동한
+            경우 제한은 계정마다 따로 적용됩니다.
           </li>
           <li>
             월간 수익 = 주간 수익 × {RULES.weeksPerMonth} + 월간 보스(검은 마법사)

@@ -37,14 +37,16 @@ export interface CharacterSummary {
 export interface AccountSummary {
   /** 모든 제한 반영 후 주간 수익 */
   weeklyRevenue: number;
-  /** 월드 90개 제한 반영 전 주간 수익 (캐릭터당 12개 제한은 반영) */
+  /** 90개 제한 반영 전 주간 수익 (캐릭터당 12개 제한은 반영) */
   weeklyRevenueUncapped: number;
-  /** 판매로 집계된 결정 수 (90개 상한) */
+  /** 판매로 집계된 결정 수 (계정×월드별 90개 상한 반영) */
   weeklyCrystalCount: number;
   /** 제한 없이 생산되는 결정 수 */
   weeklyCrystalTotal: number;
   /** 90개 제한으로 잘려나간 가치 합 */
   weeklyLostToWorldCap: number;
+  /** 90개 제한이 각각 적용된 계정×월드 그룹 수 */
+  capGroups: number;
   /** 월간 보스 수익 합 */
   monthlyBossRevenue: number;
   /** 주간 수익 × weeksPerMonth + 월간 보스 수익 */
@@ -70,10 +72,19 @@ function resolveEntry(
 }
 
 /**
+ * 90개 판매 제한이 적용되는 그룹 키.
+ * 게임 규칙상 결정석 판매 제한은 "넥슨 계정 × 월드"당 주 90개다.
+ * 계정 정보가 없는(수동 추가) 캐릭터는 같은 월드끼리 한 계정으로 간주한다.
+ */
+function sellCapGroupKey(character: Character): string {
+  return `${character.meta?.accountId ?? ''}:${character.meta?.world ?? ''}`;
+}
+
+/**
  * 계정 전체 수익 계산.
  * - 일일 보스: 주간 격파 횟수(1~7)만큼 결정 생산
  * - 주간 보스: 캐릭터당 가격 높은 순 12개까지만 판매 집계
- * - 전체 결정: 월드당 주 90개까지 가격 높은 순으로 판매 집계
+ * - 전체 결정: 계정×월드당 주 90개까지 가격 높은 순으로 판매 집계
  * - 월간 보스: 월 1회, 주간 판매 제한 계산에서는 제외 (요약에 별도 합산)
  */
 export function computeAccount(
@@ -82,11 +93,18 @@ export function computeAccount(
   dateISO: string,
 ): AccountSummary {
   const characterSummaries: CharacterSummary[] = [];
-  const soldCrystals: CrystalInstance[] = [];
+  const soldByGroup = new Map<string, CrystalInstance[]>();
   let weeklyCrystalTotal = 0;
   let monthlyBossRevenue = 0;
 
   for (const character of characters) {
+    const groupKey = sellCapGroupKey(character);
+    let soldCrystals = soldByGroup.get(groupKey);
+    if (!soldCrystals) {
+      soldCrystals = [];
+      soldByGroup.set(groupKey, soldCrystals);
+    }
+
     let dailyRevenue = 0;
     let dailyCrystals = 0;
     const weeklyValues: number[] = [];
@@ -132,16 +150,23 @@ export function computeAccount(
     });
   }
 
-  const weeklyRevenueUncapped = soldCrystals.reduce((s, c) => s + c.value, 0);
-
-  let weeklyRevenue = weeklyRevenueUncapped;
-  let weeklyCrystalCount = soldCrystals.length;
-  if (soldCrystals.length > RULES.worldWeeklySellLimit) {
-    const sorted = [...soldCrystals].sort((a, b) => b.value - a.value);
-    weeklyRevenue = sorted
-      .slice(0, RULES.worldWeeklySellLimit)
-      .reduce((s, c) => s + c.value, 0);
-    weeklyCrystalCount = RULES.worldWeeklySellLimit;
+  // 90개 판매 제한은 계정×월드 그룹별로 각각 적용한다
+  let weeklyRevenueUncapped = 0;
+  let weeklyRevenue = 0;
+  let weeklyCrystalCount = 0;
+  for (const soldCrystals of soldByGroup.values()) {
+    const groupSum = soldCrystals.reduce((s, c) => s + c.value, 0);
+    weeklyRevenueUncapped += groupSum;
+    if (soldCrystals.length > RULES.worldWeeklySellLimit) {
+      const sorted = [...soldCrystals].sort((a, b) => b.value - a.value);
+      weeklyRevenue += sorted
+        .slice(0, RULES.worldWeeklySellLimit)
+        .reduce((s, c) => s + c.value, 0);
+      weeklyCrystalCount += RULES.worldWeeklySellLimit;
+    } else {
+      weeklyRevenue += groupSum;
+      weeklyCrystalCount += soldCrystals.length;
+    }
   }
 
   return {
@@ -150,6 +175,7 @@ export function computeAccount(
     weeklyCrystalCount,
     weeklyCrystalTotal,
     weeklyLostToWorldCap: weeklyRevenueUncapped - weeklyRevenue,
+    capGroups: Math.max(1, soldByGroup.size),
     monthlyBossRevenue,
     monthlyRevenue: weeklyRevenue * RULES.weeksPerMonth + monthlyBossRevenue,
     characters: characterSummaries,

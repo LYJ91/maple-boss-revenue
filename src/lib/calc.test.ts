@@ -85,7 +85,7 @@ describe('computeAccount', () => {
     expect(s.weeklyRevenue).toBe(total - 8_080_000);
   });
 
-  it('월드당 90개 초과 시 가격 높은 순 90개만 집계된다', () => {
+  it('같은 계정×월드에서 90개 초과 시 가격 높은 순 90개만 집계된다', () => {
     // 캐릭터 13개는 최대치(12) 초과라 규칙상 불가 → 13캐릭터로 일일 7개씩 = 91개 상황을
     // 2캐릭터로 재현: 일일 보스 7종 × 7회 = 49개씩 → 98개 (90개 초과)
     const dailySeven: Character['entries'] = [
@@ -114,6 +114,55 @@ describe('computeAccount', () => {
     // 가장 싼 자쿰 이지(114,000) 결정 8개가 제외되어야 한다
     expect(s.weeklyLostToWorldCap).toBe(114_000 * 8);
     expect(s.weeklyRevenue).toBe(s.weeklyRevenueUncapped - 114_000 * 8);
+  });
+
+  it('90개 제한은 계정×월드별로 따로 적용된다', () => {
+    const dailySeven: Character['entries'] = [
+      'zakum',
+      'papulatus',
+      'magnus',
+      'hilla',
+      'horntail',
+      'von-leon',
+      'arkarium',
+    ].map((bossId) => ({
+      bossId,
+      difficulty: 'easy',
+      partySize: 1,
+      clearsPerWeek: 7,
+    }));
+    dailySeven[3] = { ...dailySeven[3], difficulty: 'normal' };
+
+    // 같은 월드지만 서로 다른 계정에서 불러온 캐릭터 → 49+49=98개여도 제한에 걸리지 않는다
+    const c1: Character = {
+      ...makeCharacter('a', dailySeven),
+      meta: { world: '루나', accountId: 'acc-1' },
+    };
+    const c2: Character = {
+      ...makeCharacter('b', dailySeven.map((e) => ({ ...e }))),
+      meta: { world: '루나', accountId: 'acc-2' },
+    };
+    const s = computeAccount([c1, c2], BOSS_MAP, TODAY);
+
+    expect(s.weeklyCrystalTotal).toBe(98);
+    expect(s.weeklyCrystalCount).toBe(98);
+    expect(s.weeklyLostToWorldCap).toBe(0);
+    expect(s.capGroups).toBe(2);
+    expect(s.weeklyRevenue).toBe(s.weeklyRevenueUncapped);
+
+    // 같은 계정의 다른 월드도 각각 90개 제한을 가진다
+    const c3: Character = {
+      ...makeCharacter('c', dailySeven.map((e) => ({ ...e }))),
+      meta: { world: '루나', accountId: 'acc-1' },
+    };
+    const c4: Character = {
+      ...makeCharacter('d', dailySeven.map((e) => ({ ...e }))),
+      meta: { world: '스카니아', accountId: 'acc-1' },
+    };
+    const s2 = computeAccount([c1, c3, c4], BOSS_MAP, TODAY);
+    // 루나(acc-1) 98개 → 90개로 캡, 스카니아(acc-1) 49개는 그대로
+    expect(s2.weeklyCrystalCount).toBe(90 + 49);
+    expect(s2.weeklyLostToWorldCap).toBe(114_000 * 8);
   });
 
   it('월간 보스는 주간 수익에 포함되지 않고 월간 수익에 합산된다', () => {
