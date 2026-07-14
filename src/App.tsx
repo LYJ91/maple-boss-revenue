@@ -13,7 +13,9 @@ import {
   type SchedulerState,
 } from './lib/scheduler';
 import { todayISO } from './lib/format';
+import { loadHistory, recordCurrentWeek, type WeekRecord } from './lib/history';
 import { SummaryBar } from './components/SummaryBar';
+import { RevenueHistory } from './components/RevenueHistory';
 import { CharacterSidebar } from './components/CharacterSidebar';
 import { BossPanel } from './components/BossPanel';
 import { PriceTable } from './components/PriceTable';
@@ -128,6 +130,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   /** 캐릭터 id → 이번 주 스케줄러 현황 (체크리스트에서 연동된 캐릭터만) */
   const [schedules, setSchedules] = useState<Record<string, SchedulerState>>({});
+  const [history, setHistory] = useState<WeekRecord[]>(loadHistory);
   const today = useMemo(todayISO, []);
 
   useEffect(() => {
@@ -253,6 +256,19 @@ export default function App() {
     () => (selectedSchedule ? completedBossKeys(selectedSchedule) : null),
     [selectedSchedule],
   );
+
+  // 이번 주 수익 기록 갱신 (캐릭터가 하나도 없을 땐 기존 기록을 덮지 않는다)
+  useEffect(() => {
+    if (route.view !== 'home' || state.characters.length === 0) return;
+    setHistory(
+      recordCurrentWeek({
+        revenue: summary.weeklyRevenue,
+        crystals: summary.weeklyCrystalCount,
+        monthlyBossRevenue: summary.monthlyBossRevenue,
+        characterCount: state.characters.length,
+      }),
+    );
+  }, [route.view, summary, state.characters.length]);
 
   const addCharacter = () => {
     setState((prev) => {
@@ -479,6 +495,8 @@ export default function App() {
           )}
         </section>
       </main>
+
+      <RevenueHistory records={history} />
 
       <footer className="app-footer">
         <h3>계산 기준</h3>
