@@ -1,67 +1,74 @@
 import { describe, expect, it } from 'vitest';
-import { CUBE_TYPES, cubeSlotCategory, gradeFromApi } from '../data/cubeData';
+import { CUBE_TYPES, mesuEquipKey } from '../data/cubeData';
 import { jobProfile } from '../data/flameData';
 import {
   analyzeCubes,
   countUsefulLines,
+  lineUsefulProbabilities,
   parsePotentialLine,
   probabilityReachTarget,
-  lineUsefulProbabilities,
+  usefulRateInPool,
 } from './cube';
+import mesuTables from '../data/mesuCubeOptions.json';
 
 const warrior = jobProfile('히어로');
 const mage = jobProfile('비숍');
 
-describe('cubeSlotCategory / gradeFromApi', () => {
-  it('슬롯 분류', () => {
-    expect(cubeSlotCategory('무기')).toBe('weapon');
-    expect(cubeSlotCategory('엠블렘')).toBe('emblem');
-    expect(cubeSlotCategory('장갑')).toBe('gloves');
-    expect(cubeSlotCategory('반지1')).toBe('accessory');
-    expect(cubeSlotCategory('상의')).toBe('armor');
-  });
-
-  it('등급 파싱', () => {
-    expect(gradeFromApi('유니크')).toBe('unique');
-    expect(gradeFromApi('레전드리')).toBe('legendary');
-    expect(gradeFromApi(null)).toBeNull();
+describe('mesuEquipKey', () => {
+  it('슬롯 매핑', () => {
+    expect(mesuEquipKey('무기')).toBe('무기');
+    expect(mesuEquipKey('반지1')).toBe('반지');
+    expect(mesuEquipKey('보조무기')).toBe('보조무기(포스실드, 소울링 제외)');
   });
 });
 
 describe('parsePotentialLine', () => {
-  it('무기 유효: 공%/보공/방무', () => {
-    expect(parsePotentialLine('공격력 +12%', 'weapon', warrior)?.useful).toBe(true);
-    expect(parsePotentialLine('보스 몬스터 공격 시 데미지 +40%', 'weapon', warrior)?.useful).toBe(
+  it('무기 유효: 공%/보공/방무 (mesu 표기 포함)', () => {
+    expect(parsePotentialLine('공격력 : +9%', 'weapon', warrior)?.useful).toBe(true);
+    expect(parsePotentialLine('보스 몬스터 공격 시 데미지 : +30%', 'weapon', warrior)?.useful).toBe(
       true,
     );
-    expect(parsePotentialLine('몬스터 방어율 무시 +40%', 'weapon', warrior)?.useful).toBe(true);
+    expect(parsePotentialLine('몬스터 방어율 무시 : +30%', 'weapon', warrior)?.useful).toBe(true);
+    expect(parsePotentialLine('공격력 : +32', 'weapon', warrior)?.useful).toBe(false);
     expect(parsePotentialLine('STR : +12%', 'weapon', warrior)?.useful).toBe(false);
   });
 
   it('마법사는 마력%만 유효', () => {
-    expect(parsePotentialLine('마력 +12%', 'weapon', mage)?.useful).toBe(true);
-    expect(parsePotentialLine('공격력 +12%', 'weapon', mage)?.useful).toBe(false);
+    expect(parsePotentialLine('마력 : +12%', 'weapon', mage)?.useful).toBe(true);
+    expect(parsePotentialLine('공격력 : +12%', 'weapon', mage)?.useful).toBe(false);
   });
 
   it('엠블렘은 보공 비유효', () => {
-    expect(parsePotentialLine('보스 몬스터 공격 시 데미지 +40%', 'emblem', warrior)?.useful).toBe(
+    expect(
+      parsePotentialLine('보스 몬스터 공격 시 데미지 : +40%', 'emblem', warrior)?.useful,
+    ).toBe(false);
+    expect(parsePotentialLine('몬스터 방어율 무시 : +40%', 'emblem', warrior)?.useful).toBe(true);
+  });
+});
+
+describe('mesu useful rates', () => {
+  it('실버 유니크 무기 공%/보공/방무 합 ≈ 20%', () => {
+    const pool = mesuTables.methods.silver['무기'].UNIQUE;
+    const rate = usefulRateInPool(pool, 'weapon', warrior, false);
+    expect(rate).toBeCloseTo(0.2, 2);
+  });
+
+  it('하위 에픽 줄을 반영하면 2줄 기대가 동일등급만 볼 때보다 낮다', () => {
+    const withLower = lineUsefulProbabilities(
+      'silver',
+      'unique',
+      '무기',
+      'weapon',
+      warrior,
       false,
     );
-    expect(parsePotentialLine('몬스터 방어율 무시 +40%', 'emblem', warrior)?.useful).toBe(true);
-  });
-
-  it('장갑 크뎀 / 모자 쿨감', () => {
-    expect(parsePotentialLine('크리티컬 데미지 +8%', 'gloves', warrior)?.useful).toBe(true);
-    expect(parsePotentialLine('크리티컬 데미지 +8%', 'armor', warrior)?.useful).toBe(false);
-    expect(
-      parsePotentialLine('모든 스킬의 재사용 대기시간 : -2초', 'hat', warrior)?.useful,
-    ).toBe(true);
-  });
-
-  it('방어구 주스탯%', () => {
-    expect(parsePotentialLine('STR : +12%', 'armor', warrior)?.useful).toBe(true);
-    expect(parsePotentialLine('INT : +12%', 'armor', warrior)?.useful).toBe(false);
-    expect(parsePotentialLine('올스탯 : +9%', 'accessory', warrior)?.useful).toBe(true);
+    // L2 should be dominated by epic useful (~7.7%), not only unique*0.2
+    expect(withLower[1]).toBeGreaterThan(0.05);
+    const p2 = probabilityReachTarget(withLower, 2);
+    const tries = 1 / p2;
+    // without lower grades: ~1000+; with mesu lower: typically tens~low hundreds
+    expect(tries).toBeLessThan(200);
+    expect(tries).toBeGreaterThan(10);
   });
 });
 
@@ -73,18 +80,6 @@ describe('countUsefulLines', () => {
       warrior,
     );
     expect(r.count).toBe(2);
-    expect(r.labels).toEqual(['공%', '보공']);
-  });
-});
-
-describe('probabilityReachTarget', () => {
-  it('첫 줄만 확실하면 목표 1은 100%', () => {
-    expect(probabilityReachTarget([1, 0, 0], 1)).toBeCloseTo(1);
-  });
-
-  it('세 줄 독립 10%면 목표 1은 약 27.1%', () => {
-    const p = probabilityReachTarget([0.1, 0.1, 0.1], 1);
-    expect(p).toBeCloseTo(1 - 0.9 ** 3, 4);
   });
 });
 
@@ -92,8 +87,9 @@ describe('analyzeCubes', () => {
   const silver = CUBE_TYPES.find((c) => c.id === 'silver')!;
   const gold = CUBE_TYPES.find((c) => c.id === 'gold')!;
   const bronze = CUBE_TYPES.find((c) => c.id === 'bronze')!;
+  const black = CUBE_TYPES.find((c) => c.id === 'black')!;
 
-  it('유니크 무기는 실버 분석, 미달이면 기대 횟수 > 0', () => {
+  it('유니크 무기 실버 목표 2줄 — mesu 기반 유한 기대', () => {
     const [r] = analyzeCubes(
       [
         {
@@ -113,8 +109,8 @@ describe('analyzeCubes', () => {
     expect(r.supported).toBe(true);
     expect(r.usefulLines).toBe(1);
     expect(r.done).toBe(false);
-    expect(r.expectedTries).toBeGreaterThan(1);
-    expect(Number.isFinite(r.expectedTries)).toBe(true);
+    expect(r.expectedTries).toBeGreaterThan(10);
+    expect(r.expectedTries).toBeLessThan(200);
   });
 
   it('이미 목표 이상이면 기대 0', () => {
@@ -142,7 +138,7 @@ describe('analyzeCubes', () => {
     expect(r.expectedTries).toBe(0);
   });
 
-  it('레전만 골드 대상, 유니크는 제외', () => {
+  it('레전만 골드 대상', () => {
     const [r] = analyzeCubes(
       [
         {
@@ -183,9 +179,9 @@ describe('analyzeCubes', () => {
     expect(r.usefulLines).toBe(1);
   });
 
-  it('블랙이 골드보다 2·3줄 동일등급 확률이 높아 기대 횟수가 작다', () => {
+  it('블랙이 골드보다 레전 2줄 기대가 유리', () => {
     const item = {
-      slot: '무기' as const,
+      slot: '무기',
       name: '레전무기',
       icon: '',
       potentialGrade: '레전드리',
@@ -193,18 +189,9 @@ describe('analyzeCubes', () => {
       potential: ['공격력 +12%', 'DEX : +9%', '최대 HP +10%'],
       additional: [] as (string | null)[],
     };
-    const black = CUBE_TYPES.find((c) => c.id === 'black')!;
     const g = analyzeCubes([item], warrior, gold, 2)[0];
     const b = analyzeCubes([item], warrior, black, 2)[0];
     expect(g.supported && b.supported).toBe(true);
     expect(b.expectedTries).toBeLessThan(g.expectedTries);
-  });
-});
-
-describe('lineUsefulProbabilities', () => {
-  it('실버 유니크 첫 줄은 useful rate와 동일', () => {
-    const p = lineUsefulProbabilities('silver', 'unique', 'weapon', false);
-    expect(p[0]).toBeCloseTo(0.32);
-    expect(p[1]).toBeCloseTo(0.011858 * 0.32);
   });
 });

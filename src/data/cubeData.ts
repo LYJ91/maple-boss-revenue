@@ -1,14 +1,12 @@
 /**
- * 큐브 줄별 등급 확률 + 유효 옵션 근사 비율.
+ * 큐브 종류·슬롯 분류.
  *
- * 줄 등급 확률 출처 (넥슨 공식 확률형 아이템 가이드):
+ * 옵션별 등장 확률·줄 등급 확률은 mesu.live(공식 표 기반) 스냅샷
+ * `mesuCubeOptions.json` 을 사용한다.
  * - 메멘토 실버 = 장인의 큐브
  * - 메멘토 골드 = 명장의 큐브
- * - 블랙 큐브
- * - 메멘토 브론즈 에디 = 수상한 에디셔널 큐브
- *
- * 같은 등급 안에서 ‘유효 줄’이 뜰 비율은 옵션 종류표 전수가 비현실적이라
- * 카테고리별 근사 상수로 둔다 (우선순위 정렬용).
+ * - 블랙 = 잠재능력 재설정/블랙 큐브
+ * - 메멘토 브론즈 = 수상한 에디셔널 큐브
  */
 
 export type PotentialGrade = 'rare' | 'epic' | 'unique' | 'legendary';
@@ -27,9 +25,7 @@ export type CubeSlotCategory =
 export interface CubeType {
   id: CubeId;
   label: string;
-  /** 본잠 / 에디 */
   potKind: 'main' | 'additional';
-  /** 이 큐브로 분석하는 대상 등급 */
   targetGrade: PotentialGrade;
 }
 
@@ -40,57 +36,26 @@ export const CUBE_TYPES: CubeType[] = [
   { id: 'bronze', label: '메멘토 브론즈', potKind: 'additional', targetGrade: 'epic' },
 ];
 
-/**
- * 장비 잠재 등급이 grade일 때, 큐브 1회 결과의 줄별 동일 등급(또는 상한 등급) 확률.
- * index 0/1/2 = 첫/둘/셋 번째 옵션.
- */
-export const SAME_GRADE_LINE_P: Record<CubeId, Partial<Record<PotentialGrade, [number, number, number]>>> = {
-  // 장인의 큐브 / 실버
-  silver: {
-    unique: [1, 0.011858, 0.011858],
-    epic: [1, 0.047619, 0.047619],
-    rare: [1, 0.166667, 0.166667],
-  },
-  // 명장의 큐브 / 골드
-  gold: {
-    legendary: [1, 0.001996, 0.001996],
-    unique: [1, 0.016959, 0.016959],
-    epic: [1, 0.079994, 0.079994],
-    rare: [1, 0.166667, 0.166667],
-  },
-  // 블랙 큐브
-  black: {
-    legendary: [1, 0.2, 0.05],
-    unique: [1, 0.2, 0.05],
-    epic: [1, 0.2, 0.05],
-    rare: [1, 0.2, 0.05],
-  },
-  // 수상한/브론즈 에디셔널
-  bronze: {
-    epic: [1, 0.004, 0.004],
-    rare: [1, 0.019608, 0.019608],
-  },
+export const GRADE_API_KEY: Record<PotentialGrade, string> = {
+  rare: 'RARE',
+  epic: 'EPIC',
+  unique: 'UNIQUE',
+  legendary: 'LEGENDARY',
 };
 
-/**
- * 동일 등급 줄이 떴을 때 그 줄이 ‘유효’일 근사 확률.
- * (옵션 풀에서 유효 종류 비중 추정 — 우선순위용 근사치)
- */
-export const USEFUL_GIVEN_SAME_GRADE: Record<CubeSlotCategory, number> = {
-  weapon: 0.32,
-  secondary: 0.3,
-  emblem: 0.28,
-  armor: 0.18,
-  accessory: 0.18,
-  gloves: 0.16,
-  hat: 0.16,
-};
-
-/** 레전 장갑 크리뎀 / 모자 쿨감 — 동일 등급 줄에서 전용 옵션이 뜰 근사 확률 */
-export const SPECIALTY_GIVEN_SAME_GRADE: Partial<Record<CubeSlotCategory, number>> = {
-  gloves: 0.07,
-  hat: 0.055,
-};
+/** 잠재 등급의 한 단계 아래 (레어의 아래는 노멀 → 옵션 없음) */
+export function lowerPotentialGrade(grade: PotentialGrade): PotentialGrade | null {
+  switch (grade) {
+    case 'legendary':
+      return 'unique';
+    case 'unique':
+      return 'epic';
+    case 'epic':
+      return 'rare';
+    default:
+      return null;
+  }
+}
 
 const WEAPON_SLOTS = new Set(['무기']);
 const SECONDARY_SLOTS = new Set(['보조무기', '방패', '포스실드', '소울링']);
@@ -132,8 +97,39 @@ export function cubeSlotCategory(slot: string, part?: string): CubeSlotCategory 
   if (HAT_SLOTS.has(key) || partKey === '모자') return 'hat';
   if (ARMOR_SLOTS.has(key) || ARMOR_SLOTS.has(partKey)) return 'armor';
   if (ACCESSORY_SLOTS.has(key) || ACCESSORY_SLOTS.has(partKey)) return 'accessory';
-  // part 이름으로 한 번 더
   if (partKey.includes('무기') && !partKey.includes('보조')) return 'weapon';
+  return null;
+}
+
+/**
+ * 넥슨 슬롯/파트 → mesu.live equip 키.
+ * 표에 없는 슬롯(포켓 등)은 null.
+ */
+export function mesuEquipKey(slot: string, part?: string): string | null {
+  const s = slot.trim();
+  const p = (part ?? '').trim();
+  if (s === '무기' || p === '무기') return '무기';
+  if (s === '엠블렘' || p === '엠블렘') return '엠블렘';
+  if (s === '방패' || p === '방패') return '방패';
+  if (p.includes('포스실드') || p.includes('소울링') || s === '포스실드' || s === '소울링') {
+    return '포스실드, 소울링';
+  }
+  if (s === '보조무기' || p.includes('보조')) return '보조무기(포스실드, 소울링 제외)';
+  if (s === '모자' || p === '모자') return '모자';
+  if (s === '상의' || p === '상의') return '상의';
+  if (s === '한벌옷' || p === '한벌옷') return '한벌옷';
+  if (s === '하의' || p === '하의') return '하의';
+  if (s === '신발' || p === '신발') return '신발';
+  if (s === '장갑' || p === '장갑') return '장갑';
+  if (s === '망토' || p === '망토') return '망토';
+  if (s === '벨트' || p === '벨트') return '벨트';
+  if (s === '어깨장식' || p === '어깨장식') return '어깨장식';
+  if (s === '얼굴장식' || p === '얼굴장식') return '얼굴장식';
+  if (s === '눈장식' || p === '눈장식') return '눈장식';
+  if (s === '귀고리' || p === '귀고리') return '귀고리';
+  if (s.startsWith('반지') || p === '반지') return '반지';
+  if (s.startsWith('펜던트') || p === '펜던트') return '펜던트';
+  if (s === '기계 심장' || p === '기계심장' || p === '기계 심장') return '기계심장';
   return null;
 }
 

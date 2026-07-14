@@ -235,9 +235,13 @@ export function CubePriority({
       )}
 
       <p className="flame-footnote">
-        줄별 등급 확률은 넥슨 공개 표를 사용하고, 동일 등급 안에서 유효 옵션이 뜰 비율은
-        슬롯별 근사치입니다. 옵션 종류·수치 전수표가 아니라 우선순위 정렬용 참고값이며,
-        실제 기대값과 차이가 날 수 있습니다. 등급업은 고려하지 않습니다.
+        옵션·줄 등급 확률은{' '}
+        <a href="https://www.mesu.live/calc/potential" target="_blank" rel="noreferrer">
+          mesu.live
+        </a>
+        (넥슨 공개 확률 기반, 200제 스냅샷)를 사용합니다. 목표는 ‘유효로 분류한 옵션 n줄’이며,
+        mesu에서 특정 옵션 세트를 지정한 경우와는 수치가 다를 수 있습니다. 쓸만한 스킬 등
+        중복 제한·동일 결과 재롤은 근사(줄 독립)로 두었고, 등급업은 고려하지 않습니다.
       </p>
     </Section>
   );
