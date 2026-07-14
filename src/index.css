@@ -2478,3 +2478,208 @@ body {
     width: 100%;
   }
 }
+
+/* ── 추옵 강화 우선순위 (FlamePriority) ───────────────────────── */
+.flame-toggle {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.flame-toggle-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.flame-toggle-btn.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.flame-intro,
+.flame-footnote {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.flame-footnote {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+}
+
+.flame-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.flame-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flame-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.flame-row:hover {
+  border-color: var(--accent);
+}
+
+.flame-rank {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.flame-rank.top {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.flame-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.flame-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  flex: 1 1 auto;
+}
+
+.flame-name strong {
+  font-size: 13px;
+}
+
+.flame-slot {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.flame-metrics {
+  display: flex;
+  gap: 14px;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.flame-metric {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.flame-metric em {
+  font-style: normal;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+.flame-metric.strong {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.flame-max {
+  font-style: normal;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.flame-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: transparent;
+}
+
+.flame-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.flame-excluded {
+  margin-top: 10px;
+}
+
+.flame-excluded-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.flame-excluded ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flame-excluded li {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.flame-note {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+@media (max-width: 720px) {
+  .flame-metrics {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .flame-row {
+    flex-wrap: wrap;
+  }
+}

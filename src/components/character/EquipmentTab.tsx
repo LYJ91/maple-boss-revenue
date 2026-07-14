@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { DetailData } from '../../lib/nexon';
 import { EmptyNote, GradeBadge, gradeKey, optionLines, partError, Section } from './shared';
+import { FlamePriority } from './FlamePriority';
 
 interface Equip {
   item_equipment_part: string;
@@ -19,6 +20,7 @@ interface Equip {
   additional_potential_option_3: string | null;
   item_total_option: Record<string, unknown>;
   item_add_option: Record<string, unknown>;
+  item_base_option?: Record<string, unknown>;
   item_etc_option: Record<string, unknown>;
   item_starforce_option: Record<string, unknown>;
   soul_name: string | null;
@@ -34,7 +36,15 @@ interface Symbol_ {
   symbol_require_growth_count: number;
 }
 
-export function EquipmentTab({ data }: { data: DetailData }) {
+export function EquipmentTab({
+  data,
+  job,
+  finalStats,
+}: {
+  data: DetailData;
+  job?: string;
+  finalStats?: { str?: number; dex?: number; int?: number; luk?: number };
+}) {
   const [selected, setSelected] = useState<Equip | null>(null);
 
   const itemErr = partError(data.item);
@@ -91,6 +101,18 @@ export function EquipmentTab({ data }: { data: DetailData }) {
           </div>
         )}
       </Section>
+
+      {equips.length > 0 && (
+        <FlamePriority
+          equips={equips}
+          job={job}
+          finalStats={finalStats}
+          onPick={(slot) => {
+            const eq = equips.find((e) => e.item_equipment_slot === slot);
+            if (eq) setSelected(eq);
+          }}
+        />
+      )}
 
       <div className="two-col">
         <Section title="심볼">

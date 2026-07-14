@@ -288,9 +288,28 @@ function TabBody({
   data: DetailData;
   summary: Summary;
 }) {
+  const statNum = (name: string) => {
+    const found = summary.stat?.final_stat?.find(
+      (s: { stat_name: string; stat_value: string }) => s.stat_name === name,
+    );
+    const v = Number(found?.stat_value);
+    return Number.isFinite(v) ? v : 0;
+  };
+
   switch (tab) {
     case 'equip':
-      return <EquipmentTab data={data} />;
+      return (
+        <EquipmentTab
+          data={data}
+          job={summary.basic.character_class}
+          finalStats={{
+            str: statNum('STR'),
+            dex: statNum('DEX'),
+            int: statNum('INT'),
+            luk: statNum('LUK'),
+          }}
+        />
+      );
     case 'stat':
       return <StatTab stat={summary.stat} data={data} />;
     case 'union':
