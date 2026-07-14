@@ -222,7 +222,11 @@ export default function App() {
         const index = prev.characters.findIndex((c) => c.id === charId);
         if (index < 0) return prev;
         const character = prev.characters[index];
-        const next = entriesFromSchedule(character.entries, st);
+        const next = entriesFromSchedule(
+          character.entries,
+          st,
+          character.partyPrefs ?? {},
+        );
         if (entriesEqual(character.entries, next)) return prev;
         const characters = [...prev.characters];
         characters[index] = { ...character, entries: next };
@@ -318,6 +322,8 @@ export default function App() {
         id: newId(),
         name: `${source.name} 복사`,
         entries: source.entries.map((e) => ({ ...e })),
+        partyPrefs: source.partyPrefs ? { ...source.partyPrefs } : undefined,
+        meta: source.meta,
       };
       const characters = [...prev.characters];
       characters.splice(index + 1, 0, copy);
@@ -363,13 +369,13 @@ export default function App() {
     updateSelected((c) => {
       const existing = c.entries.find((e) => e.bossId === bossId);
       if (existing && existing.difficulty === difficulty) {
-        // 같은 난이도를 다시 누르면 해제
+        // 같은 난이도를 다시 누르면 해제 (파티 인원 선호는 유지)
         return { ...c, entries: c.entries.filter((e) => e.bossId !== bossId) };
       }
       const entry: BossEntry = {
         bossId,
         difficulty,
-        partySize: existing?.partySize ?? 1,
+        partySize: c.partyPrefs?.[bossId] ?? existing?.partySize ?? 1,
         clearsPerWeek: existing?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
       };
       const entries = existing
@@ -390,7 +396,7 @@ export default function App() {
         return {
           bossId,
           difficulty,
-          partySize: prev?.partySize ?? 1,
+          partySize: c.partyPrefs?.[bossId] ?? prev?.partySize ?? 1,
           clearsPerWeek: prev?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
         };
       });
@@ -399,12 +405,20 @@ export default function App() {
   };
 
   const updateEntry = (bossId: string, patch: Partial<BossEntry>) => {
-    updateSelected((c) => ({
-      ...c,
-      entries: c.entries.map((e) =>
+    updateSelected((c) => {
+      const entries = c.entries.map((e) =>
         e.bossId === bossId ? { ...e, ...patch } : e,
-      ),
-    }));
+      );
+      // 파티 인원 변경은 주차 리셋과 무관하게 선호로 별도 저장한다
+      if (patch.partySize != null) {
+        return {
+          ...c,
+          entries,
+          partyPrefs: { ...c.partyPrefs, [bossId]: patch.partySize },
+        };
+      }
+      return { ...c, entries };
+    });
   };
 
   const isHome = route.view === 'home';

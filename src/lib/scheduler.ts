@@ -128,12 +128,13 @@ export function completedBossKeys(state: SchedulerState): Set<string> {
 
 /**
  * 캐릭터의 주간/월간 보스 선택을 API 처치 내역으로 교체한 entries를 반환한다.
- * - 기존에 같은 보스가 선택돼 있었다면 파티 인원 설정을 이어받는다
+ * - 파티 인원은 partyPrefs(주차와 무관한 선호) → 현재 entries → 기본 1 순으로 적용
  * - 같은 보스가 여러 난이도로 완료로 내려오는 비정상 응답은 가격 높은 난이도를 쓴다
  */
 export function entriesFromSchedule(
   current: BossEntry[],
   state: SchedulerState,
+  partyPrefs: Record<string, number> = {},
 ): BossEntry[] {
   const cleared = completedBossKeys(state);
   const prevByBoss = new Map(current.map((e) => [e.bossId, e]));
@@ -147,10 +148,11 @@ export function entriesFromSchedule(
     }
     if (!matched) continue;
     const prev = prevByBoss.get(boss.id);
+    const preferred = partyPrefs[boss.id];
     auto.push({
       bossId: boss.id,
       difficulty: matched,
-      partySize: prev?.partySize ?? 1,
+      partySize: preferred ?? prev?.partySize ?? 1,
       clearsPerWeek: prev?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
     });
   }

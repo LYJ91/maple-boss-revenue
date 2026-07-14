@@ -107,8 +107,9 @@ export function BossPanel({
         <p className="notice info sync-note">
           넥슨 API 연동됨 — 이번 주에 실제로 처치한 보스가 난이도(
           <span className="cleared-dot" aria-hidden="true">✓</span> 표시)까지
-          자동 선택되어 수익에 반영됩니다. 파티 인원은 직접 조정해주세요. 주간·월간
-          보스를 수동으로 바꿔도 다음 새로고침 때 처치 내역 기준으로 되돌아갑니다.
+          자동 선택되어 수익에 반영됩니다. 파티 인원을 바꾸면 다음 주에도 그대로
+          유지됩니다. 주간·월간 보스를 수동으로 바꿔도 다음 새로고침 때 처치 내역
+          기준으로 되돌아갑니다.
         </p>
       )}
 

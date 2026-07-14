@@ -49,6 +49,11 @@ export interface Character {
   name: string;
   entries: BossEntry[];
   meta?: CharacterMeta;
+  /**
+   * 보스별 파티 인원 선호 (bossId → 1~6).
+   * 주간 처치 기록이 리셋돼도 유지되며, API로 보스가 다시 선택될 때 적용된다.
+   */
+  partyPrefs?: Record<string, number>;
 }
 
 /* ───── 주간 체크리스트 ───── */

@@ -91,6 +91,23 @@ describe('entriesFromSchedule', () => {
     expect(next.some((e) => e.bossId === 'will')).toBe(false);
   });
 
+  it('주차 리셋으로 entries가 비어도 partyPrefs의 인원이 다시 적용된다', () => {
+    // 목요일 리셋 후 entries는 비었지만, 이전에 저장한 선호(스우 2인)는 남아 있다
+    const next = entriesFromSchedule([], state, { lotus: 2, damien: 3 });
+    expect(next).toContainEqual({
+      bossId: 'lotus',
+      difficulty: 'hard',
+      partySize: 2,
+      clearsPerWeek: 7,
+    });
+    expect(next).toContainEqual({
+      bossId: 'damien',
+      difficulty: 'hard',
+      partySize: 3,
+      clearsPerWeek: 7,
+    });
+  });
+
   it('entriesEqual은 순서와 무관하게 동일 설정을 판별한다', () => {
     const a: BossEntry[] = [
       { bossId: 'lotus', difficulty: 'hard', partySize: 1, clearsPerWeek: 7 },

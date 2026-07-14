@@ -7,15 +7,29 @@ export interface AppState {
   selectedId: string | null;
 }
 
+/** 현재 entries의 파티 인원을 partyPrefs로 이전해, 주차 리셋 후에도 인원이 유지되게 한다 */
+function withPartyPrefs(character: Character): Character {
+  const prefs: Record<string, number> = { ...(character.partyPrefs ?? {}) };
+  for (const entry of character.entries ?? []) {
+    if (prefs[entry.bossId] == null && entry.partySize >= 1) {
+      prefs[entry.bossId] = entry.partySize;
+    }
+  }
+  return Object.keys(prefs).length > 0
+    ? { ...character, partyPrefs: prefs }
+    : character;
+}
+
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
       if (Array.isArray(parsed.characters)) {
+        const characters = parsed.characters.map(withPartyPrefs);
         return {
-          characters: parsed.characters,
-          selectedId: parsed.selectedId ?? parsed.characters[0]?.id ?? null,
+          characters,
+          selectedId: parsed.selectedId ?? characters[0]?.id ?? null,
         };
       }
     }
