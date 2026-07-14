@@ -104,11 +104,35 @@ describe('entriesFromSchedule', () => {
 });
 
 describe('weeklyBossProgress', () => {
-  it('처치 수와 한도를 반환한다', () => {
+  it('보스별 complete 플래그에서 처치 수를 직접 센다 (넥슨 카운터 오차 대비)', () => {
     const p = weeklyBossProgress(
-      makeState({ weeklyBossClearCount: 5, weeklyBossClearLimit: 12 }),
+      makeState({
+        // 넥슨 카운터는 1로 오지만 실제 플래그는 2마리 처치
+        weeklyBossClearCount: 1,
+        weeklyBossClearLimit: 12,
+        bosses: [
+          { name: '스우', difficulty: 'hard', cycle: 'bossWeekly', complete: true },
+          { name: '데미안', difficulty: 'hard', cycle: 'bossWeekly', complete: true },
+          { name: '윌', difficulty: 'hard', cycle: 'bossWeekly', complete: false },
+          // 월간 보스는 주간 카운트에서 제외
+          { name: '검은 마법사', difficulty: 'hard', cycle: 'bossMonthly', complete: true },
+        ],
+      }),
     );
-    expect(p).toEqual({ done: 5, total: 12, complete: false });
+    expect(p).toEqual({ done: 2, total: 12, complete: false });
+  });
+
+  it('같은 보스가 여러 난이도로 완료돼도 1마리로 센다', () => {
+    const p = weeklyBossProgress(
+      makeState({
+        weeklyBossClearLimit: 12,
+        bosses: [
+          { name: '스우', difficulty: 'normal', cycle: 'bossWeekly', complete: true },
+          { name: '스우', difficulty: 'hard', cycle: 'bossWeekly', complete: true },
+        ],
+      }),
+    );
+    expect(p.done).toBe(1);
   });
 
   it('한도가 0으로 내려오면 기본 12를 사용한다', () => {

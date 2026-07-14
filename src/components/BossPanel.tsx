@@ -4,7 +4,7 @@ import { BOSS_PRESETS, type BossPreset } from '../data/presets';
 import type { CharacterSummary } from '../lib/calc';
 import { crystalValue, priceAt } from '../lib/calc';
 import { formatFull, formatMeso } from '../lib/format';
-import { bossKey, weeklyBossProgress, type SchedulerState } from '../lib/scheduler';
+import { bossKey } from '../lib/scheduler';
 import { CharacterAvatar } from './CharacterAvatar';
 
 const GROUPS: { reset: ResetType; title: string; desc: string }[] = [
@@ -24,8 +24,6 @@ interface Props {
   character: Character;
   summary: CharacterSummary | undefined;
   today: string;
-  /** 넥슨 스케줄러 현황 (API 연동 캐릭터만, 없으면 undefined) */
-  schedule: SchedulerState | undefined;
   /** 이번 주 처치 완료 `${bossId}:${difficulty}` 집합 (연동 안 됨 = null) */
   clearedBossKeys: ReadonlySet<string> | null;
   onToggle(bossId: string, difficulty: Difficulty): void;
@@ -61,7 +59,6 @@ export function BossPanel({
   character,
   summary,
   today,
-  schedule,
   clearedBossKeys,
   onToggle,
   onUpdateEntry,
@@ -71,7 +68,6 @@ export function BossPanel({
   const entryMap = new Map(character.entries.map((e) => [e.bossId, e]));
   const over12 =
     (summary?.weeklyBossSelected ?? 0) > RULES.weeklyBossSellLimitPerCharacter;
-  const weeklyClear = schedule ? weeklyBossProgress(schedule) : null;
 
   return (
     <div className="boss-panel">
@@ -104,14 +100,6 @@ export function BossPanel({
             주간 보스 {summary?.weeklyBossSelected ?? 0}/
             {RULES.weeklyBossSellLimitPerCharacter}
           </span>
-          {weeklyClear && (
-            <span
-              className={'chip lg sync' + (weeklyClear.complete ? ' done' : '')}
-              title="넥슨 스케줄러 API 기준 이번 주 실제 처치 현황"
-            >
-              이번 주 처치 {weeklyClear.done}/{weeklyClear.total}
-            </span>
-          )}
         </div>
       </div>
 

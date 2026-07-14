@@ -458,7 +458,6 @@ export default function App() {
               character={selected}
               summary={selectedSummary}
               today={today}
-              schedule={selectedSchedule}
               clearedBossKeys={clearedBossKeys}
               onToggle={toggleEntry}
               onUpdateEntry={updateEntry}

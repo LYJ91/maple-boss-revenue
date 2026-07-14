@@ -178,10 +178,20 @@ export interface AutoProgress {
   complete: boolean;
 }
 
-/** 주간 보스 처치 수 (n/12) — limit이 0으로 오는 경우 기본 12를 쓴다 */
+/**
+ * 주간 보스 처치 수 (n/12).
+ * 넥슨의 weekly_boss_clear_count 카운터가 실제 처치 플래그와 어긋나는 사례가 있어
+ * (예: 12마리 처치인데 11로 응답) 보스별 complete 플래그에서 직접 센다.
+ * 같은 보스를 여러 난이도로 응답하는 경우는 1마리로 센다.
+ */
 export function weeklyBossProgress(state: SchedulerState): AutoProgress {
   const total = state.weeklyBossClearLimit || WEEKLY_BOSS_DEFAULT_LIMIT;
-  const done = Math.min(state.weeklyBossClearCount, total);
+  const clearedNames = new Set(
+    state.bosses
+      .filter((b) => b.cycle !== 'bossMonthly' && b.complete)
+      .map((b) => normalizeName(b.name)),
+  );
+  const done = Math.min(clearedNames.size, total);
   return { done, total, complete: done >= total };
 }
 
