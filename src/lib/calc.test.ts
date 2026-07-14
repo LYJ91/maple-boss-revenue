@@ -34,14 +34,14 @@ describe('crystalValue', () => {
 });
 
 describe('computeAccount', () => {
-  it('일일 보스는 주간 격파 횟수만큼 집계된다', () => {
+  it('주간 보스는 주 1회 결정 1개로 집계된다', () => {
     const c = makeCharacter('a', [
-      { bossId: 'zakum', difficulty: 'normal', partySize: 1, clearsPerWeek: 7 },
+      { bossId: 'lotus', difficulty: 'hard', partySize: 1, clearsPerWeek: 7 },
     ]);
     const s = computeAccount([c], BOSS_MAP, TODAY);
-    expect(s.weeklyRevenue).toBe(349_000 * 7);
-    expect(s.weeklyCrystalCount).toBe(7);
-    expect(s.monthlyRevenue).toBe(349_000 * 7 * RULES.weeksPerMonth);
+    expect(s.weeklyRevenue).toBe(51_500_000);
+    expect(s.weeklyCrystalCount).toBe(1);
+    expect(s.monthlyRevenue).toBe(51_500_000 * RULES.weeksPerMonth);
   });
 
   it('주간 보스는 캐릭터당 12개까지만 집계된다 (가격 높은 순)', () => {
@@ -85,88 +85,73 @@ describe('computeAccount', () => {
     expect(s.weeklyRevenue).toBe(total - 8_080_000);
   });
 
+  /** 주간 보스 12종 구성 (가장 싼 결정은 카오스 자쿰 8,080,000) */
+  const weekly12: Character['entries'] = [
+    { bossId: 'zakum-weekly', difficulty: 'chaos' },
+    { bossId: 'bloody-queen-weekly', difficulty: 'chaos' },
+    { bossId: 'von-bon-weekly', difficulty: 'chaos' },
+    { bossId: 'pierre-weekly', difficulty: 'chaos' },
+    { bossId: 'magnus-weekly', difficulty: 'hard' },
+    { bossId: 'vellum-weekly', difficulty: 'chaos' },
+    { bossId: 'papulatus-weekly', difficulty: 'chaos' },
+    { bossId: 'lotus', difficulty: 'normal' },
+    { bossId: 'damien', difficulty: 'normal' },
+    { bossId: 'guardian-angel-slime', difficulty: 'normal' },
+    { bossId: 'lucid', difficulty: 'easy' },
+    { bossId: 'will', difficulty: 'easy' },
+  ].map((e) => ({ ...e, partySize: 1, clearsPerWeek: 7 })) as Character['entries'];
+
+  const cloneWeekly12 = () => weekly12.map((e) => ({ ...e }));
+
   it('같은 계정×월드에서 90개 초과 시 가격 높은 순 90개만 집계된다', () => {
-    // 캐릭터 13개는 최대치(12) 초과라 규칙상 불가 → 13캐릭터로 일일 7개씩 = 91개 상황을
-    // 2캐릭터로 재현: 일일 보스 7종 × 7회 = 49개씩 → 98개 (90개 초과)
-    const dailySeven: Character['entries'] = [
-      'zakum',
-      'papulatus',
-      'magnus',
-      'hilla',
-      'horntail',
-      'von-leon',
-      'arkarium',
-    ].map((bossId) => ({
-      bossId,
-      difficulty: 'easy',
-      partySize: 1,
-      clearsPerWeek: 7,
-    }));
-    // 힐라는 이지가 없으므로 노멀로 교체
-    dailySeven[3] = { ...dailySeven[3], difficulty: 'normal' };
+    // 12보스 × 8캐릭터 = 96개 (90개 초과)
+    const chars = Array.from({ length: 8 }, (_, i) =>
+      makeCharacter(`c${i}`, cloneWeekly12()),
+    );
+    const s = computeAccount(chars, BOSS_MAP, TODAY);
 
-    const c1 = makeCharacter('a', dailySeven);
-    const c2 = makeCharacter('b', dailySeven.map((e) => ({ ...e })));
-    const s = computeAccount([c1, c2], BOSS_MAP, TODAY);
-
-    expect(s.weeklyCrystalTotal).toBe(98);
+    expect(s.weeklyCrystalTotal).toBe(96);
     expect(s.weeklyCrystalCount).toBe(90);
-    // 가장 싼 자쿰 이지(114,000) 결정 8개가 제외되어야 한다
-    expect(s.weeklyLostToWorldCap).toBe(114_000 * 8);
-    expect(s.weeklyRevenue).toBe(s.weeklyRevenueUncapped - 114_000 * 8);
+    // 가장 싼 카오스 자쿰(8,080,000) 결정 6개가 제외되어야 한다
+    expect(s.weeklyLostToWorldCap).toBe(8_080_000 * 6);
+    expect(s.weeklyRevenue).toBe(s.weeklyRevenueUncapped - 8_080_000 * 6);
   });
 
   it('90개 제한은 계정×월드별로 따로 적용된다', () => {
-    const dailySeven: Character['entries'] = [
-      'zakum',
-      'papulatus',
-      'magnus',
-      'hilla',
-      'horntail',
-      'von-leon',
-      'arkarium',
-    ].map((bossId) => ({
-      bossId,
-      difficulty: 'easy',
-      partySize: 1,
-      clearsPerWeek: 7,
-    }));
-    dailySeven[3] = { ...dailySeven[3], difficulty: 'normal' };
-
-    // 같은 월드지만 서로 다른 계정에서 불러온 캐릭터 → 49+49=98개여도 제한에 걸리지 않는다
-    const c1: Character = {
-      ...makeCharacter('a', dailySeven),
+    // 같은 월드지만 서로 다른 계정 4캐릭터씩 → 48+48=96개여도 제한에 걸리지 않는다
+    const acc1 = Array.from({ length: 4 }, (_, i): Character => ({
+      ...makeCharacter(`a${i}`, cloneWeekly12()),
       meta: { world: '루나', accountId: 'acc-1' },
-    };
-    const c2: Character = {
-      ...makeCharacter('b', dailySeven.map((e) => ({ ...e }))),
+    }));
+    const acc2 = Array.from({ length: 4 }, (_, i): Character => ({
+      ...makeCharacter(`b${i}`, cloneWeekly12()),
       meta: { world: '루나', accountId: 'acc-2' },
-    };
-    const s = computeAccount([c1, c2], BOSS_MAP, TODAY);
+    }));
+    const s = computeAccount([...acc1, ...acc2], BOSS_MAP, TODAY);
 
-    expect(s.weeklyCrystalTotal).toBe(98);
-    expect(s.weeklyCrystalCount).toBe(98);
+    expect(s.weeklyCrystalTotal).toBe(96);
+    expect(s.weeklyCrystalCount).toBe(96);
     expect(s.weeklyLostToWorldCap).toBe(0);
     expect(s.capGroups).toBe(2);
     expect(s.weeklyRevenue).toBe(s.weeklyRevenueUncapped);
     expect(s.groups).toEqual([
-      { accountId: 'acc-1', world: '루나', produced: 49, sold: 49 },
-      { accountId: 'acc-2', world: '루나', produced: 49, sold: 49 },
+      { accountId: 'acc-1', world: '루나', produced: 48, sold: 48 },
+      { accountId: 'acc-2', world: '루나', produced: 48, sold: 48 },
     ]);
 
     // 같은 계정의 다른 월드도 각각 90개 제한을 가진다
-    const c3: Character = {
-      ...makeCharacter('c', dailySeven.map((e) => ({ ...e }))),
+    const acc1More = Array.from({ length: 4 }, (_, i): Character => ({
+      ...makeCharacter(`e${i}`, cloneWeekly12()),
       meta: { world: '루나', accountId: 'acc-1' },
-    };
-    const c4: Character = {
-      ...makeCharacter('d', dailySeven.map((e) => ({ ...e }))),
+    }));
+    const scania = Array.from({ length: 4 }, (_, i): Character => ({
+      ...makeCharacter(`s${i}`, cloneWeekly12()),
       meta: { world: '스카니아', accountId: 'acc-1' },
-    };
-    const s2 = computeAccount([c1, c3, c4], BOSS_MAP, TODAY);
-    // 루나(acc-1) 98개 → 90개로 캡, 스카니아(acc-1) 49개는 그대로
-    expect(s2.weeklyCrystalCount).toBe(90 + 49);
-    expect(s2.weeklyLostToWorldCap).toBe(114_000 * 8);
+    }));
+    // 루나(acc-1) 96개 → 90개로 캡, 스카니아(acc-1) 48개는 그대로
+    const s2 = computeAccount([...acc1, ...acc1More, ...scania], BOSS_MAP, TODAY);
+    expect(s2.weeklyCrystalCount).toBe(90 + 48);
+    expect(s2.weeklyLostToWorldCap).toBe(8_080_000 * 6);
   });
 
   it('월간 보스는 주간 수익에 포함되지 않고 월간 수익에 합산된다', () => {
@@ -182,13 +167,15 @@ describe('computeAccount', () => {
     );
   });
 
-  it('존재하지 않는 보스/난이도 항목은 무시된다 (데이터 갱신 대비)', () => {
+  it('존재하지 않는 보스/난이도 항목은 무시된다 (과거 일일 보스 저장분 포함)', () => {
     const c = makeCharacter('a', [
       { bossId: 'removed-boss', difficulty: 'hard', partySize: 1, clearsPerWeek: 7 },
-      { bossId: 'cygnus', difficulty: 'easy', partySize: 1, clearsPerWeek: 7 }, // 삭제된 난이도
-      { bossId: 'cygnus', difficulty: 'normal', partySize: 1, clearsPerWeek: 7 },
+      { bossId: 'zakum', difficulty: 'normal', partySize: 1, clearsPerWeek: 7 }, // 삭제된 일일 보스
+      { bossId: 'lucid', difficulty: 'extreme', partySize: 1, clearsPerWeek: 7 }, // 없는 난이도
+      { bossId: 'lotus', difficulty: 'hard', partySize: 1, clearsPerWeek: 7 },
     ]);
     const s = computeAccount([c], BOSS_MAP, TODAY);
-    expect(s.weeklyRevenue).toBe(1_360_000 * 7);
+    expect(s.weeklyRevenue).toBe(51_500_000);
+    expect(s.weeklyCrystalCount).toBe(1);
   });
 });

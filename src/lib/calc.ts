@@ -22,7 +22,7 @@ export interface CharacterSummary {
   id: string;
   /** 캐릭터당 12개 제한 반영, 월드 90개 제한 반영 전 주간 수익 */
   weeklyRevenue: number;
-  /** 판매로 집계된 주간 결정 수 (일일 격파 수 + 주간 보스 최대 12개) */
+  /** 판매로 집계된 주간 결정 수 (주간 보스 최대 12개) */
   weeklyCrystalCount: number;
   /** 선택된 주간 보스 수 */
   weeklyBossSelected: number;
@@ -102,10 +102,11 @@ function sellCapGroupKey(character: Character): string {
 
 /**
  * 계정 전체 수익 계산.
- * - 일일 보스: 주간 격파 횟수(1~7)만큼 결정 생산
  * - 주간 보스: 캐릭터당 가격 높은 순 12개까지만 판매 집계
  * - 전체 결정: 계정×월드당 주 90개까지 가격 높은 순으로 판매 집계
  * - 월간 보스: 월 1회, 주간 판매 제한 계산에서는 제외 (요약에 별도 합산)
+ * - 일일 보스는 다루지 않는다. 과거 저장 데이터의 일일 보스 항목은
+ *   보스 데이터에 없으므로 resolveEntry에서 무시된다.
  */
 export function computeAccount(
   characters: Character[],
@@ -130,8 +131,6 @@ export function computeAccount(
     }
     const soldCrystals = group.crystals;
 
-    let dailyRevenue = 0;
-    let dailyCrystals = 0;
     const weeklyValues: number[] = [];
     let charMonthly = 0;
 
@@ -140,17 +139,9 @@ export function computeAccount(
       if (!resolved) continue; // 데이터 갱신으로 사라진 보스/난이도는 무시
       const { boss, value } = resolved;
 
-      if (boss.reset === 'daily') {
-        const clears = Math.min(
-          Math.max(1, entry.clearsPerWeek),
-          RULES.maxDailyClearsPerWeek,
-        );
-        dailyRevenue += value * clears;
-        dailyCrystals += clears;
-        for (let i = 0; i < clears; i++) soldCrystals.push({ value });
-      } else if (boss.reset === 'weekly') {
+      if (boss.reset === 'weekly') {
         weeklyValues.push(value);
-      } else {
+      } else if (boss.reset === 'monthly') {
         charMonthly += value;
       }
     }
@@ -161,13 +152,13 @@ export function computeAccount(
     const countedSum = counted.reduce((s, v) => s + v, 0);
     for (const value of counted) soldCrystals.push({ value });
 
-    weeklyCrystalTotal += dailyCrystals + weeklyValues.length;
+    weeklyCrystalTotal += weeklyValues.length;
     monthlyBossRevenue += charMonthly;
 
     characterSummaries.push({
       id: character.id,
-      weeklyRevenue: dailyRevenue + countedSum,
-      weeklyCrystalCount: dailyCrystals + counted.length,
+      weeklyRevenue: countedSum,
+      weeklyCrystalCount: counted.length,
       weeklyBossSelected: weeklyValues.length,
       weeklyBossCounted: counted.length,
       weeklyLostToCharLimit: dropped.reduce((s, v) => s + v, 0),

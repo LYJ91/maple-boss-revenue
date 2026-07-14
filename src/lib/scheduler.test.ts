@@ -71,8 +71,9 @@ describe('entriesFromSchedule', () => {
     ]);
   });
 
-  it('일일 보스 설정과 기존 파티 인원은 유지된다', () => {
+  it('기존 파티 인원은 유지되고, 미처치 보스와 옛 일일 보스 항목은 제거된다', () => {
     const current: BossEntry[] = [
+      // 과거 저장 데이터의 일일 보스(현재 미지원) → 제거
       { bossId: 'zakum', difficulty: 'normal', partySize: 1, clearsPerWeek: 7 },
       // 이전에 노멀 2인으로 설정했던 스우 → 처치 내역(하드)로 바뀌되 파티 인원 유지
       { bossId: 'lotus', difficulty: 'normal', partySize: 2, clearsPerWeek: 7 },
@@ -80,12 +81,7 @@ describe('entriesFromSchedule', () => {
       { bossId: 'will', difficulty: 'hard', partySize: 1, clearsPerWeek: 7 },
     ];
     const next = entriesFromSchedule(current, state);
-    expect(next).toContainEqual({
-      bossId: 'zakum',
-      difficulty: 'normal',
-      partySize: 1,
-      clearsPerWeek: 7,
-    });
+    expect(next.some((e) => e.bossId === 'zakum')).toBe(false);
     expect(next).toContainEqual({
       bossId: 'lotus',
       difficulty: 'hard',

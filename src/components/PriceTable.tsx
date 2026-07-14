@@ -4,7 +4,7 @@ import { priceAt } from '../lib/calc';
 import { formatFull, formatMeso } from '../lib/format';
 
 export function PriceTable({ today, onClose }: { today: string; onClose(): void }) {
-  const groups: ResetType[] = ['daily', 'weekly', 'monthly'];
+  const groups: ResetType[] = ['weekly', 'monthly'];
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

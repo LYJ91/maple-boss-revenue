@@ -126,13 +126,8 @@ export function completedBossKeys(state: SchedulerState): Set<string> {
 
 /* ───── 처치 내역 → 보스 선택(entries) 자동 반영 ───── */
 
-const BOSS_RESET_BY_ID: ReadonlyMap<string, string> = new Map(
-  BOSSES.map((b) => [b.id, b.reset]),
-);
-
 /**
  * 캐릭터의 주간/월간 보스 선택을 API 처치 내역으로 교체한 entries를 반환한다.
- * - 일일 보스 설정은 그대로 유지 (스케줄러 API는 일일 보스를 제공하지 않음)
  * - 기존에 같은 보스가 선택돼 있었다면 파티 인원 설정을 이어받는다
  * - 같은 보스가 여러 난이도로 완료로 내려오는 비정상 응답은 가격 높은 난이도를 쓴다
  */
@@ -142,13 +137,9 @@ export function entriesFromSchedule(
 ): BossEntry[] {
   const cleared = completedBossKeys(state);
   const prevByBoss = new Map(current.map((e) => [e.bossId, e]));
-  const kept = current.filter(
-    (e) => BOSS_RESET_BY_ID.get(e.bossId) === 'daily',
-  );
 
   const auto: BossEntry[] = [];
   for (const boss of BOSSES) {
-    if (boss.reset === 'daily') continue;
     // variants는 가격 오름차순이므로 마지막 매칭이 가장 높은 난이도다
     let matched: Difficulty | null = null;
     for (const v of boss.variants) {
@@ -163,7 +154,7 @@ export function entriesFromSchedule(
       clearsPerWeek: prev?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
     });
   }
-  return [...kept, ...auto];
+  return auto;
 }
 
 /** 두 entries가 순서와 무관하게 같은 설정인지 */

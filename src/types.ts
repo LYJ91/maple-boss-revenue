@@ -28,7 +28,7 @@ export interface BossEntry {
   bossId: string;
   difficulty: Difficulty;
   partySize: number;
-  /** 일일 보스만 사용 (1~7). 주간/월간은 무시된다. */
+  /** 과거 일일 보스용 필드 (저장 데이터 호환을 위해 유지, 현재 미사용) */
   clearsPerWeek: number;
 }
 

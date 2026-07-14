@@ -9,11 +9,6 @@ import { CharacterAvatar } from './CharacterAvatar';
 
 const GROUPS: { reset: ResetType; title: string; desc: string }[] = [
   {
-    reset: 'daily',
-    title: '일일 보스',
-    desc: '매일 1회 격파 · 주 격파 횟수 설정 가능',
-  },
-  {
     reset: 'weekly',
     title: '주간 보스',
     desc: `주 1회 격파 · 결정 판매는 캐릭터당 ${RULES.weeklyBossSellLimitPerCharacter}개까지`,
@@ -207,9 +202,6 @@ function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: Ro
     : undefined;
   const value =
     entry && variant ? crystalValue(priceAt(variant, today), entry.partySize) : 0;
-  const clears = entry
-    ? Math.min(Math.max(1, entry.clearsPerWeek), RULES.maxDailyClearsPerWeek)
-    : 0;
   const rowCleared =
     clearedBossKeys != null &&
     boss.variants.some((v) => clearedBossKeys.has(bossKey(boss.id, v.difficulty)));
@@ -266,35 +258,10 @@ function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: Ro
               ))}
             </select>
           </label>
-          {boss.reset === 'daily' && (
-            <label className="control">
-              주
-              <select
-                value={clears}
-                onChange={(e) =>
-                  onUpdate(boss.id, { clearsPerWeek: Number(e.target.value) })
-                }
-              >
-                {Array.from({ length: RULES.maxDailyClearsPerWeek }, (_, i) => i + 1).map(
-                  (n) => (
-                    <option key={n} value={n}>
-                      {n}회
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-          )}
           <div className="row-value">
-            <strong>
-              {formatMeso(boss.reset === 'daily' ? value * clears : value)}
-            </strong>
+            <strong>{formatMeso(value)}</strong>
             <span className="row-value-sub">
-              {boss.reset === 'daily'
-                ? `결정 1개 ${formatMeso(value)}`
-                : boss.reset === 'weekly'
-                  ? '주 1회'
-                  : '월 1회'}
+              {boss.reset === 'weekly' ? '주 1회' : '월 1회'}
             </span>
           </div>
         </div>
