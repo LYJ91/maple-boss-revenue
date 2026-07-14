@@ -1990,6 +1990,20 @@ body {
   min-width: 0;
 }
 
+/* 가로 스크롤 시 왼쪽 항목 열 고정 */
+.todo-corner,
+.todo-item-label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  /* 그리드 gap(8px) 사이로 스크롤되는 셀이 비치지 않도록 배경색으로 덮는다 */
+  box-shadow: 8px 0 0 var(--bg);
+}
+
+.todo-corner {
+  background: var(--bg);
+}
+
 .todo-char-head {
   display: flex;
   flex-direction: column;
