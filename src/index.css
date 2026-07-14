@@ -1665,6 +1665,27 @@ body {
   color: var(--text-dim);
 }
 
+.option-line.opt-base {
+  color: var(--text);
+}
+
+.option-line.opt-add {
+  color: #6fdc8c;
+}
+
+.option-line.opt-etc {
+  color: #c09bff;
+}
+
+.option-line.opt-star {
+  color: #f0c26b;
+}
+
+.option-line.opt-total {
+  color: #7ed7ef;
+  font-weight: 600;
+}
+
 .grade-badge {
   font-size: 11px;
   font-weight: 700;
@@ -2479,7 +2500,14 @@ body {
   }
 }
 
-/* ── 추옵 강화 우선순위 (FlamePriority) ───────────────────────── */
+/* ── 추옵/큐브 강화 우선순위 ─────────────────────────────────── */
+.cube-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .flame-toggle {
   display: inline-flex;
   gap: 6px;

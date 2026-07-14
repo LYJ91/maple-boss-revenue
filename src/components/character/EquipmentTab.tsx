@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { DetailData } from '../../lib/nexon';
 import { EmptyNote, GradeBadge, gradeKey, optionLines, partError, Section } from './shared';
+import { CubePriority } from './CubePriority';
 import { FlamePriority } from './FlamePriority';
 
 interface Equip {
@@ -104,6 +105,18 @@ export function EquipmentTab({
 
       {equips.length > 0 && (
         <FlamePriority
+          equips={equips}
+          job={job}
+          finalStats={finalStats}
+          onPick={(slot) => {
+            const eq = equips.find((e) => e.item_equipment_slot === slot);
+            if (eq) setSelected(eq);
+          }}
+        />
+      )}
+
+      {equips.length > 0 && (
+        <CubePriority
           equips={equips}
           job={job}
           finalStats={finalStats}
@@ -219,16 +232,11 @@ function EquipDetail({ equip }: { equip: Equip }) {
         </div>
       )}
 
-      {optionLines(equip.item_total_option).length > 0 && (
-        <div className="option-block">
-          <div className="option-title">총 옵션</div>
-          {optionLines(equip.item_total_option).map((line) => (
-            <div key={line} className="option-line dim">
-              {line}
-            </div>
-          ))}
-        </div>
-      )}
+      <OptionSection title="기본 옵션" option={equip.item_base_option} tone="base" />
+      <OptionSection title="추가옵션" option={equip.item_add_option} tone="add" />
+      <OptionSection title="주문서" option={equip.item_etc_option} tone="etc" />
+      <OptionSection title="스타포스" option={equip.item_starforce_option} tone="star" />
+      <OptionSection title="총 옵션" option={equip.item_total_option} tone="total" />
 
       {equip.soul_name && (
         <div className="option-block">
@@ -238,6 +246,29 @@ function EquipDetail({ equip }: { equip: Equip }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function OptionSection({
+  title,
+  option,
+  tone,
+}: {
+  title: string;
+  option: Record<string, unknown> | null | undefined;
+  tone: 'base' | 'add' | 'etc' | 'star' | 'total';
+}) {
+  const lines = optionLines(option);
+  if (lines.length === 0) return null;
+  return (
+    <div className="option-block">
+      <div className="option-title">{title}</div>
+      {lines.map((line) => (
+        <div key={line} className={`option-line opt-${tone}`}>
+          {line}
+        </div>
+      ))}
     </div>
   );
 }
