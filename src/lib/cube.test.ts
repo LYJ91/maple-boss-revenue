@@ -83,6 +83,54 @@ describe('countUsefulLines', () => {
   });
 });
 
+describe('additional epic useful (bronze)', () => {
+  it('마법사: 상의에서 마력(평마)·올스탯·INT% 유효, 공%는 비유효', () => {
+    expect(parsePotentialLine('마력 : +11', 'armor', mage, false, 'additional')?.useful).toBe(
+      true,
+    );
+    expect(parsePotentialLine('올스탯 : +2%', 'armor', mage, false, 'additional')?.useful).toBe(
+      true,
+    );
+    expect(parsePotentialLine('INT : +4%', 'armor', mage, false, 'additional')?.useful).toBe(true);
+    expect(parsePotentialLine('공격력 : +11', 'armor', mage, false, 'additional')?.useful).toBe(
+      false,
+    );
+  });
+
+  it('물리: 상의에서 공격력(평공)·올스탯·STR% 유효, 마력은 비유효', () => {
+    expect(parsePotentialLine('공격력 : +11', 'armor', warrior, false, 'additional')?.useful).toBe(
+      true,
+    );
+    expect(parsePotentialLine('올스탯 : +2%', 'armor', warrior, false, 'additional')?.useful).toBe(
+      true,
+    );
+    expect(parsePotentialLine('마력 : +11', 'armor', warrior, false, 'additional')?.useful).toBe(
+      false,
+    );
+  });
+
+  it('에디 무기: 올스탯%도 유효 (본잠에선 무기 올스탯 비유효)', () => {
+    expect(parsePotentialLine('올스탯 : +3%', 'weapon', warrior, false, 'additional')?.useful).toBe(
+      true,
+    );
+    expect(parsePotentialLine('올스탯 : +3%', 'weapon', warrior, false, 'main')?.useful).toBe(false);
+    expect(parsePotentialLine('공격력 : +6%', 'weapon', warrior, false, 'additional')?.useful).toBe(
+      true,
+    );
+  });
+
+  it('브론즈 상의 물리 유효 비율이 주스탯만일 때보다 큼', () => {
+    const pool = mesuTables.methods.bronze['상의'].EPIC;
+    const mainOnly = usefulRateInPool(pool, 'armor', warrior, false, 'main');
+    const addi = usefulRateInPool(pool, 'armor', warrior, false, 'additional');
+    // main: STR% 4% + allstat 4% = 0.08
+    // addi: + flat ATT 4% → 0.12
+    expect(mainOnly).toBeCloseTo(0.08, 2);
+    expect(addi).toBeCloseTo(0.12, 2);
+    expect(addi).toBeGreaterThan(mainOnly);
+  });
+});
+
 describe('analyzeCubes', () => {
   const silver = CUBE_TYPES.find((c) => c.id === 'silver')!;
   const gold = CUBE_TYPES.find((c) => c.id === 'gold')!;
@@ -177,6 +225,28 @@ describe('analyzeCubes', () => {
     );
     expect(r.supported).toBe(true);
     expect(r.usefulLines).toBe(1);
+  });
+
+  it('에디 에픽 평공도 유효 줄로 집계', () => {
+    const [r] = analyzeCubes(
+      [
+        {
+          slot: '상의',
+          name: '상의',
+          icon: '',
+          potentialGrade: '레전드리',
+          additionalGrade: '에픽',
+          potential: [],
+          additional: ['공격력 : +11', '올스탯 : +2%', 'DEX : +4%'],
+        },
+      ],
+      warrior,
+      bronze,
+      2,
+    );
+    expect(r.supported).toBe(true);
+    expect(r.usefulLines).toBe(2);
+    expect(r.done).toBe(true);
   });
 
   it('블랙이 골드보다 레전 2줄 기대가 유리', () => {

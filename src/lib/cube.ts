@@ -48,6 +48,7 @@ export interface CubeAnalysis {
 
 export type LineKind =
   | 'att_pct'
+  | 'att_flat'
   | 'boss'
   | 'ied'
   | 'main_stat_pct'
@@ -85,24 +86,31 @@ const STAT_PCT: Record<'str' | 'dex' | 'int' | 'luk', RegExp> = {
   luk: /LUK\s*:\s*\+(\d+)%|LUK\s*\+(\d+)%/i,
 };
 
+const ARMORISH: CubeSlotCategory[] = ['armor', 'accessory', 'gloves', 'hat'];
+
+function wantsMagic(profile: JobProfile): boolean {
+  return profile.attackType === 'magic';
+}
+
+function matchesAttackType(isMagic: boolean, profile: JobProfile): boolean {
+  return wantsMagic(profile) ? isMagic : !isMagic;
+}
+
 /** 잠재 옵션 한 줄을 파싱해 유효 여부 판정 */
 export function parsePotentialLine(
   text: string | null | undefined,
   category: CubeSlotCategory,
   profile: JobProfile,
   specialtyOnly = false,
+  potKind: 'main' | 'additional' = 'main',
 ): ParsedLine | null {
   if (!text?.trim()) return null;
   const t = text.trim();
+  const addi = potKind === 'additional';
 
   if (/크리티컬\s*데미지/.test(t)) {
     const useful = category === 'gloves';
-    return {
-      text: t,
-      kind: 'crit_dmg',
-      useful: specialtyOnly ? useful : useful,
-      label: '크뎀',
-    };
+    return { text: t, kind: 'crit_dmg', useful, label: '크뎀' };
   }
   if (/재사용\s*대기시간|쿨타임|모든\s*스킬의\s*재사용/.test(t)) {
     const useful = category === 'hat';
@@ -119,15 +127,17 @@ export function parsePotentialLine(
       !specialtyOnly && (category === 'weapon' || category === 'secondary');
     return { text: t, kind: 'boss', useful, label: '보공' };
   }
-  // 퍼센트 공/마만 (평공 +32 등은 제외)
-  if (/공격력\s*:?\s*\+(\d+)%/.test(t) || /마력\s*:?\s*\+(\d+)%/.test(t)) {
-    const isMagic = /마력\s*:?\s*\+(\d+)%/.test(t);
+
+  // 퍼센트 공/마 (평공 +32 등은 아래 flat에서 처리)
+  if (/공격력\s*:?\s*\+(\d+)\s*%/.test(t) || /마력\s*:?\s*\+(\d+)\s*%/.test(t)) {
+    const isMagic = /마력\s*:?\s*\+(\d+)\s*%/.test(t);
     const combat =
       category === 'weapon' || category === 'secondary' || category === 'emblem';
+    // 에디셔널: 전 부위 직업 공%/마력% 유효 / 본잠: 전투 슬롯만
     const useful =
       !specialtyOnly &&
-      combat &&
-      (profile.attackType === 'magic' ? isMagic : !isMagic);
+      matchesAttackType(isMagic, profile) &&
+      (addi || combat);
     return {
       text: t,
       kind: 'att_pct',
@@ -135,35 +145,41 @@ export function parsePotentialLine(
       label: isMagic ? '마력%' : '공%',
     };
   }
+
+  // 에디셔널 방어구·장신: 평공/평마도 유효 (예: 상의 공격력 : +11)
+  if (addi && !specialtyOnly && ARMORISH.includes(category)) {
+    const attFlat = /^공격력\s*:?\s*\+(\d+)\s*$/.test(t);
+    const magFlat = /^마력\s*:?\s*\+(\d+)\s*$/.test(t);
+    if (attFlat || magFlat) {
+      const useful = matchesAttackType(magFlat, profile);
+      return {
+        text: t,
+        kind: 'att_flat',
+        useful,
+        label: magFlat ? '마력' : '공격력',
+      };
+    }
+  }
+
   if (/올스탯\s*:?\s*\+(\d+)%|모든\s*스탯\s*\+(\d+)%/.test(t)) {
+    // 에디셔널: 전 부위 올스탯% 유효 / 본잠: 방어·장신 계열만
     const useful =
       !specialtyOnly &&
       !profile.useHp &&
-      (category === 'armor' ||
-        category === 'accessory' ||
-        category === 'gloves' ||
-        category === 'hat');
+      (addi || ARMORISH.includes(category));
     return { text: t, kind: 'all_stat_pct', useful, label: '올스탯%' };
   }
   if (/최대\s*HP\s*:?\s*\+(\d+)%|MaxHP\s*:?\s*\+(\d+)%/i.test(t)) {
     const useful =
       !specialtyOnly &&
       profile.useHp &&
-      (category === 'armor' ||
-        category === 'accessory' ||
-        category === 'gloves' ||
-        category === 'hat');
+      (addi || ARMORISH.includes(category));
     return { text: t, kind: 'hp_pct', useful, label: 'HP%' };
   }
 
   for (const key of profile.main) {
     if (STAT_PCT[key].test(t)) {
-      const useful =
-        !specialtyOnly &&
-        (category === 'armor' ||
-          category === 'accessory' ||
-          category === 'gloves' ||
-          category === 'hat');
+      const useful = !specialtyOnly && ARMORISH.includes(category);
       return {
         text: t,
         kind: 'main_stat_pct',
@@ -180,11 +196,12 @@ export function countUsefulLines(
   lines: (string | null)[],
   category: CubeSlotCategory,
   profile: JobProfile,
+  potKind: 'main' | 'additional' = 'main',
 ): { count: number; labels: string[] } {
   const labels: string[] = [];
   let count = 0;
   for (const line of lines) {
-    const parsed = parsePotentialLine(line, category, profile);
+    const parsed = parsePotentialLine(line, category, profile, false, potKind);
     if (parsed?.useful) {
       count += 1;
       labels.push(parsed.label);
@@ -210,11 +227,18 @@ export function usefulRateInPool(
   category: CubeSlotCategory,
   profile: JobProfile,
   specialty: boolean,
+  potKind: 'main' | 'additional' = 'main',
 ): number {
   if (!pool?.length) return 0;
   let sum = 0;
   for (const opt of pool) {
-    const parsed = parsePotentialLine(opt.name, category, profile, specialty);
+    const parsed = parsePotentialLine(
+      opt.name,
+      category,
+      profile,
+      specialty,
+      potKind,
+    );
     if (!parsed?.useful) continue;
     if (specialty) {
       if (category === 'gloves' && parsed.kind !== 'crit_dmg') continue;
@@ -236,6 +260,7 @@ export function lineUsefulProbabilities(
   category: CubeSlotCategory,
   profile: JobProfile,
   specialty: boolean,
+  potKind: 'main' | 'additional' = 'main',
 ): [number, number, number] {
   const gradeKey = GRADE_API_KEY[grade];
   const lines = MESU.optionGrades[cubeId]?.[gradeKey];
@@ -245,8 +270,20 @@ export function lineUsefulProbabilities(
   const lower = lowerPotentialGrade(grade);
   const currentPool = methodTables[gradeKey];
   const lowerPool = lower ? methodTables[GRADE_API_KEY[lower]] : undefined;
-  const pUsefulCurrent = usefulRateInPool(currentPool, category, profile, specialty);
-  const pUsefulLower = usefulRateInPool(lowerPool, category, profile, specialty);
+  const pUsefulCurrent = usefulRateInPool(
+    currentPool,
+    category,
+    profile,
+    specialty,
+    potKind,
+  );
+  const pUsefulLower = usefulRateInPool(
+    lowerPool,
+    category,
+    profile,
+    specialty,
+    potKind,
+  );
 
   const out: [number, number, number] = [0, 0, 0];
   for (let i = 0; i < 3; i++) {
@@ -350,7 +387,7 @@ function analyzeOne(
 
   const { count, labels } = specialty
     ? countSpecialty(lines, category, profile)
-    : countUsefulLines(lines, category, profile);
+    : countUsefulLines(lines, category, profile, cube.potKind);
 
   const done = count >= effectiveTarget;
   if (done) {
@@ -373,6 +410,7 @@ function analyzeOne(
     category,
     profile,
     specialty,
+    cube.potKind,
   );
   const pReach = probabilityReachTarget(linePs, effectiveTarget);
   const expectedTries = pReach > 0 ? 1 / pReach : Infinity;

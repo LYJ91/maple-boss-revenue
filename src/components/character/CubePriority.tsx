@@ -168,7 +168,13 @@ export function CubePriority({
         <strong>
           {mode === 'legendary'
             ? '무기·보조 공%/보공/방무 · 엠블렘 공%/방무 · 방어구·장신 주스탯 · 장갑 크뎀 · 모자 쿨감'
-            : `${mainLabel} 등 슬롯별 유효`}
+            : mode === 'bronze'
+              ? profile.useHp
+                ? '전 부위 HP% · 방어구·장신 주스탯 · 무기류 방무 등'
+                : profile.attackType === 'magic'
+                  ? '전 부위 마력%(·평마)·올스탯% · 방어구·장신 주스탯% · 무기류 방무 등'
+                  : '전 부위 공%(·평공)·올스탯% · 방어구·장신 주스탯% · 무기류 보공/방무 등'
+              : `${mainLabel} 등 슬롯별 유효`}
         </strong>
         )이 목표(<strong>유효 {targetLines}줄</strong>
         {mode === 'legendary' ? ', 장갑·모자는 전용 1줄' : ''})에 도달할 때까지의 기대
