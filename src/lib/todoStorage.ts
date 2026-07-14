@@ -1,4 +1,4 @@
-import type { TodoCharacter, TodoItem } from '../types';
+import type { TodoAccount, TodoCharacter, TodoItem } from '../types';
 import { weekKey } from './week';
 
 const STORAGE_KEY = 'maple-boss-revenue:todo:v1';
@@ -13,6 +13,8 @@ export interface TodoState {
   items: TodoItem[];
   characters: TodoCharacter[];
   checks: TodoChecks;
+  /** 넥슨 Open API 키로 연결한 계정 목록 (키는 이 브라우저에만 저장) */
+  accounts: TodoAccount[];
 }
 
 /** 기본 제공 체크리스트 항목 (최초 실행 시 시드) */
@@ -45,13 +47,14 @@ export function loadTodoState(): TodoState {
             parsed.checks && typeof parsed.checks === 'object'
               ? parsed.checks
               : {},
+          accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
         };
       }
     }
   } catch {
     // 손상된 저장 데이터는 무시하고 초기 상태로 시작
   }
-  return { items: [...DEFAULT_TODO_ITEMS], characters: [], checks: {} };
+  return { items: [...DEFAULT_TODO_ITEMS], characters: [], checks: {}, accounts: [] };
 }
 
 export function saveTodoState(state: TodoState): void {

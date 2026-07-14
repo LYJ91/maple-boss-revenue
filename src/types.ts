@@ -38,6 +38,10 @@ export interface CharacterMeta {
   job?: string;
   level?: number;
   image?: string;
+  /** 넥슨 캐릭터 식별자 (계정 목록/스케줄러 조회로 등록된 캐릭터만 보유) */
+  ocid?: string;
+  /** 이 캐릭터를 불러온 계정(TodoAccount) id — 스케줄러 조회 시 사용할 키 결정 */
+  accountId?: string;
 }
 
 export interface Character {
@@ -48,6 +52,14 @@ export interface Character {
 }
 
 /* ───── 주간 체크리스트 ───── */
+
+/** 넥슨 Open API 키로 연결한 계정 (키는 이 브라우저의 localStorage에만 저장) */
+export interface TodoAccount {
+  id: string;
+  /** 사용자가 붙인 계정 이름 (예: 본계정, 부계정) */
+  label: string;
+  apiKey: string;
+}
 
 /** 주간 리셋 요일 (월요일: 길드 콘텐츠 / 목요일: 주간 보스·에픽 던전 등) */
 export type ResetDay = 'mon' | 'thu';

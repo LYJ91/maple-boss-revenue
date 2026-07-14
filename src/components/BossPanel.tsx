@@ -4,6 +4,7 @@ import { BOSS_PRESETS, type BossPreset } from '../data/presets';
 import type { CharacterSummary } from '../lib/calc';
 import { crystalValue, priceAt } from '../lib/calc';
 import { formatFull, formatMeso } from '../lib/format';
+import { bossKey, weeklyBossProgress, type SchedulerState } from '../lib/scheduler';
 import { CharacterAvatar } from './CharacterAvatar';
 
 const GROUPS: { reset: ResetType; title: string; desc: string }[] = [
@@ -28,6 +29,10 @@ interface Props {
   character: Character;
   summary: CharacterSummary | undefined;
   today: string;
+  /** 넥슨 스케줄러 현황 (API 연동 캐릭터만, 없으면 undefined) */
+  schedule: SchedulerState | undefined;
+  /** 이번 주 처치 완료 `${bossId}:${difficulty}` 집합 (연동 안 됨 = null) */
+  clearedBossKeys: ReadonlySet<string> | null;
   onToggle(bossId: string, difficulty: Difficulty): void;
   onUpdateEntry(bossId: string, patch: Partial<BossEntry>): void;
   onApplyPreset(preset: BossPreset): void;
@@ -61,6 +66,8 @@ export function BossPanel({
   character,
   summary,
   today,
+  schedule,
+  clearedBossKeys,
   onToggle,
   onUpdateEntry,
   onApplyPreset,
@@ -69,6 +76,7 @@ export function BossPanel({
   const entryMap = new Map(character.entries.map((e) => [e.bossId, e]));
   const over12 =
     (summary?.weeklyBossSelected ?? 0) > RULES.weeklyBossSellLimitPerCharacter;
+  const weeklyClear = schedule ? weeklyBossProgress(schedule) : null;
 
   return (
     <div className="boss-panel">
@@ -101,8 +109,23 @@ export function BossPanel({
             주간 보스 {summary?.weeklyBossSelected ?? 0}/
             {RULES.weeklyBossSellLimitPerCharacter}
           </span>
+          {weeklyClear && (
+            <span
+              className={'chip lg sync' + (weeklyClear.complete ? ' done' : '')}
+              title="넥슨 스케줄러 API 기준 이번 주 실제 처치 현황"
+            >
+              이번 주 처치 {weeklyClear.done}/{weeklyClear.total}
+            </span>
+          )}
         </div>
       </div>
+
+      {clearedBossKeys && (
+        <p className="notice info sync-note">
+          넥슨 API 연동됨 — 이번 주에 실제로 처치한 보스는 난이도 옆에{' '}
+          <span className="cleared-dot" aria-hidden="true">✓</span> 표시됩니다.
+        </p>
+      )}
 
       <section className="preset-bar">
         <div className="preset-head">
@@ -154,6 +177,7 @@ export function BossPanel({
                   boss={boss}
                   entry={entryMap.get(boss.id)}
                   today={today}
+                  clearedBossKeys={clearedBossKeys}
                   onToggle={onToggle}
                   onUpdate={onUpdateEntry}
                 />
@@ -170,11 +194,12 @@ interface RowProps {
   boss: Boss;
   entry: BossEntry | undefined;
   today: string;
+  clearedBossKeys: ReadonlySet<string> | null;
   onToggle(bossId: string, difficulty: Difficulty): void;
   onUpdate(bossId: string, patch: Partial<BossEntry>): void;
 }
 
-function BossRow({ boss, entry, today, onToggle, onUpdate }: RowProps) {
+function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: RowProps) {
   const variant = entry
     ? boss.variants.find((v) => v.difficulty === entry.difficulty)
     : undefined;
@@ -183,27 +208,45 @@ function BossRow({ boss, entry, today, onToggle, onUpdate }: RowProps) {
   const clears = entry
     ? Math.min(Math.max(1, entry.clearsPerWeek), RULES.maxDailyClearsPerWeek)
     : 0;
+  const rowCleared =
+    clearedBossKeys != null &&
+    boss.variants.some((v) => clearedBossKeys.has(bossKey(boss.id, v.difficulty)));
 
   return (
     <div className={'boss-row' + (entry ? ' active' : '')}>
-      <span className="boss-name">{boss.name}</span>
+      <span className="boss-name">
+        {boss.name}
+        {rowCleared && (
+          <span className="cleared-tag" title="이번 주 처치 완료 (넥슨 API)">
+            격파
+          </span>
+        )}
+      </span>
 
       <div className="pills">
-        {boss.variants.map((v) => (
-          <button
-            key={v.difficulty}
-            type="button"
-            className={
-              'pill ' +
-              v.difficulty +
-              (entry?.difficulty === v.difficulty ? ' on' : '')
-            }
-            title={`결정석 ${formatFull(priceAt(v, today))} 메소`}
-            onClick={() => onToggle(boss.id, v.difficulty)}
-          >
-            {DIFFICULTY_LABEL[v.difficulty]}
-          </button>
-        ))}
+        {boss.variants.map((v) => {
+          const cleared = clearedBossKeys?.has(bossKey(boss.id, v.difficulty));
+          return (
+            <button
+              key={v.difficulty}
+              type="button"
+              className={
+                'pill ' +
+                v.difficulty +
+                (entry?.difficulty === v.difficulty ? ' on' : '') +
+                (cleared ? ' cleared' : '')
+              }
+              title={
+                `결정석 ${formatFull(priceAt(v, today))} 메소` +
+                (cleared ? '\n이번 주 처치 완료 (넥슨 API)' : '')
+              }
+              onClick={() => onToggle(boss.id, v.difficulty)}
+            >
+              {DIFFICULTY_LABEL[v.difficulty]}
+              {cleared && <span className="cleared-dot" aria-hidden="true">✓</span>}
+            </button>
+          );
+        })}
       </div>
 
       {entry && variant ? (

@@ -4,6 +4,12 @@ import { BOSS_MAP, DATA_SOURCE, RULES } from './data/crystalData';
 import type { BossPreset } from './data/presets';
 import { computeAccount } from './lib/calc';
 import { loadState, saveState, type AppState } from './lib/storage';
+import { loadTodoState } from './lib/todoStorage';
+import {
+  completedBossKeys,
+  fetchScheduler,
+  type SchedulerState,
+} from './lib/scheduler';
 import { todayISO } from './lib/format';
 import { SummaryBar } from './components/SummaryBar';
 import { CharacterSidebar } from './components/CharacterSidebar';
@@ -64,9 +70,9 @@ function activeTab(route: Route): MainTab {
 function MainNav({ route }: { route: Route }) {
   const current = activeTab(route);
   const tabs: { key: MainTab; label: string; go(): void }[] = [
+    { key: 'todo', label: '체크리스트', go: gotoTodo },
     { key: 'calc', label: '보스수익', go: gotoHome },
     { key: 'equip', label: '장비확인', go: gotoLookup },
-    { key: 'todo', label: '체크리스트', go: gotoTodo },
   ];
   return (
     <nav className="main-nav" aria-label="주요 기능">
@@ -118,11 +124,54 @@ export default function App() {
   const [showPrices, setShowPrices] = useState(false);
   const [showWeeklyLimit, setShowWeeklyLimit] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  /** 캐릭터 id → 이번 주 스케줄러 현황 (체크리스트에서 연동된 캐릭터만) */
+  const [schedules, setSchedules] = useState<Record<string, SchedulerState>>({});
   const today = useMemo(todayISO, []);
 
   useEffect(() => {
     saveState(state);
   }, [state]);
+
+  // 보스수익 탭 진입 시 체크리스트 캐릭터를 목록에 동기화 (이름 기준, 남는 슬롯만큼)
+  useEffect(() => {
+    if (route.view !== 'home') return;
+    const todo = loadTodoState();
+    setState((prev) => {
+      let changed = false;
+      // 이미 있는 캐릭터에는 ocid/계정 메타를 보강해 API 연동을 살린다
+      const characters = prev.characters.map((c) => {
+        const t = todo.characters.find((tc) => tc.name === c.name);
+        if (
+          t?.meta?.ocid &&
+          (c.meta?.ocid !== t.meta.ocid || c.meta?.accountId !== t.meta.accountId)
+        ) {
+          changed = true;
+          return { ...c, meta: { ...c.meta, ...t.meta } };
+        }
+        return c;
+      });
+      const existingNames = new Set(characters.map((c) => c.name));
+      const room = Math.max(0, RULES.maxCharacters - characters.length);
+      const toAdd = todo.characters
+        .filter((tc) => !existingNames.has(tc.name))
+        .slice(0, room)
+        .map(
+          (tc): Character => ({
+            id: newId(),
+            name: tc.name,
+            entries: [],
+            meta: tc.meta,
+          }),
+        );
+      if (toAdd.length > 0) changed = true;
+      if (!changed) return prev;
+      const all = [...characters, ...toAdd];
+      return {
+        characters: all,
+        selectedId: prev.selectedId ?? all[0]?.id ?? null,
+      };
+    });
+  }, [route.view]);
 
   const summary = useMemo(
     () => computeAccount(state.characters, BOSS_MAP, today),
@@ -134,6 +183,36 @@ export default function App() {
   const selectedSummary = selected
     ? summary.characters.find((s) => s.id === selected.id)
     : undefined;
+
+  // 선택한 캐릭터의 이번 주 보스 처치 현황 조회 (API 연동 캐릭터만)
+  const selectedOcid = selected?.meta?.ocid;
+  const selectedAccountId = selected?.meta?.accountId;
+  useEffect(() => {
+    if (route.view !== 'home' || !selected || !selectedOcid || !selectedAccountId) {
+      return;
+    }
+    const account = loadTodoState().accounts.find((a) => a.id === selectedAccountId);
+    if (!account) return;
+    let cancelled = false;
+    const charId = selected.id;
+    fetchScheduler(selectedOcid, account.apiKey)
+      .then((st) => {
+        if (!cancelled) setSchedules((prev) => ({ ...prev, [charId]: st }));
+      })
+      .catch(() => {
+        // 조회 실패 시 처치 현황 표시만 생략한다
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.view, selected?.id, selectedOcid, selectedAccountId]);
+
+  const selectedSchedule = selected ? schedules[selected.id] : undefined;
+  const clearedBossKeys = useMemo(
+    () => (selectedSchedule ? completedBossKeys(selectedSchedule) : null),
+    [selectedSchedule],
+  );
 
   const addCharacter = () => {
     setState((prev) => {
@@ -339,6 +418,8 @@ export default function App() {
               character={selected}
               summary={selectedSummary}
               today={today}
+              schedule={selectedSchedule}
+              clearedBossKeys={clearedBossKeys}
               onToggle={toggleEntry}
               onUpdateEntry={updateEntry}
               onApplyPreset={applyPreset}

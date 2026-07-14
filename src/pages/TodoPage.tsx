@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ResetDay, TodoCharacter, TodoItem } from '../types';
-import { searchCharacter, type LookupCharacter } from '../lib/nexon';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ResetDay, TodoAccount, TodoCharacter, TodoItem } from '../types';
+import {
+  fetchAccountCharacters,
+  searchCharacter,
+  type LookupCharacter,
+} from '../lib/nexon';
+import {
+  AUTO_ITEM_PROGRESS,
+  fetchScheduler,
+  type SchedulerState,
+} from '../lib/scheduler';
 import { CharacterAvatar } from '../components/CharacterAvatar';
 import { RESET_DAY_LABEL, weekKey } from '../lib/week';
 import {
@@ -16,15 +25,69 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${idCounter}`;
 }
 
+/** 캐릭터별 스케줄러 조회 상태 */
+interface SchedSlot {
+  state?: SchedulerState;
+  error?: string;
+  loading?: boolean;
+}
+
 export function TodoPage() {
   const [state, setState] = useState<TodoState>(loadTodoState);
-  const [showAddCharacter, setShowAddCharacter] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [settingsCharId, setSettingsCharId] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<Record<string, SchedSlot>>({});
 
   useEffect(() => {
     saveTodoState(state);
   }, [state]);
+
+  const accountById = useMemo(
+    () => new Map(state.accounts.map((a) => [a.id, a])),
+    [state.accounts],
+  );
+
+  /** API 연동 가능한 캐릭터(ocid+계정 키 보유)의 스케줄러 현황 조회 */
+  const refreshSchedules = useCallback(
+    (force: boolean) => {
+      for (const c of state.characters) {
+        const ocid = c.meta?.ocid;
+        const account = c.meta?.accountId
+          ? accountById.get(c.meta.accountId)
+          : undefined;
+        if (!ocid || !account) continue;
+        setSchedules((prev) => ({
+          ...prev,
+          [c.id]: { ...prev[c.id], loading: true },
+        }));
+        fetchScheduler(ocid, account.apiKey, { force })
+          .then((st) =>
+            setSchedules((prev) => ({ ...prev, [c.id]: { state: st } })),
+          )
+          .catch((e) =>
+            setSchedules((prev) => ({
+              ...prev,
+              [c.id]: {
+                ...prev[c.id],
+                loading: false,
+                error: e instanceof Error ? e.message : '조회 실패',
+              },
+            })),
+          );
+      }
+    },
+    [state.characters, accountById],
+  );
+
+  useEffect(() => {
+    refreshSchedules(false);
+  }, [refreshSchedules]);
+
+  const anyLinked = state.characters.some(
+    (c) => c.meta?.ocid && c.meta.accountId && accountById.has(c.meta.accountId),
+  );
+  const anyLoading = Object.values(schedules).some((s) => s.loading);
 
   // 항목별 현재 주차 키 (리셋 요일이 달라 항목마다 주차가 다를 수 있다)
   const weekKeys = useMemo(() => {
@@ -39,6 +102,14 @@ export function TodoPage() {
   const isChecked = (item: TodoItem, c: TodoCharacter) =>
     state.checks[checkKey(item.id, c.id)] === weekKeys.get(item.id);
 
+  /** API 자동 항목이면 진행 상황을, 아니면 null */
+  const autoProgress = (item: TodoItem, c: TodoCharacter) => {
+    const fn = AUTO_ITEM_PROGRESS[item.id];
+    const sched = schedules[c.id]?.state;
+    if (!fn || !sched) return null;
+    return fn(sched);
+  };
+
   const progress = useMemo(() => {
     let done = 0;
     let total = 0;
@@ -46,12 +117,13 @@ export function TodoPage() {
       for (const c of state.characters) {
         if (!isEnabled(item, c)) continue;
         total += 1;
-        if (isChecked(item, c)) done += 1;
+        const auto = autoProgress(item, c);
+        if (auto ? auto.complete : isChecked(item, c)) done += 1;
       }
     }
     return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, weekKeys]);
+  }, [state, weekKeys, schedules]);
 
   const toggleCheck = (item: TodoItem, c: TodoCharacter) => {
     const key = checkKey(item.id, c.id);
@@ -67,19 +139,76 @@ export function TodoPage() {
     });
   };
 
-  const addCharacter = (c: LookupCharacter) => {
+  const addAccount = (label: string, apiKey: string): TodoAccount => {
+    const account: TodoAccount = { id: newId('acc'), label, apiKey };
+    setState((prev) => ({ ...prev, accounts: [...prev.accounts, account] }));
+    return account;
+  };
+
+  const removeAccount = (id: string) => {
+    const target = state.accounts.find((a) => a.id === id);
+    if (!target) return;
+    if (
+      !window.confirm(
+        `'${target.label}' 계정(API 키)을 삭제할까요? 이 계정에서 불러온 캐릭터의 자동 체크가 중단됩니다.`,
+      )
+    ) {
+      return;
+    }
+    setState((prev) => ({
+      ...prev,
+      accounts: prev.accounts.filter((a) => a.id !== id),
+    }));
+  };
+
+  const addCharacters = (accountId: string, list: LookupCharacter[]) => {
+    const existingOcids = new Set(
+      state.characters.map((c) => c.meta?.ocid).filter(Boolean),
+    );
+    const existingNames = new Set(state.characters.map((c) => c.name));
+    const toAdd = list.filter(
+      (c) => !existingOcids.has(c.ocid) && !existingNames.has(c.name),
+    );
     setState((prev) => ({
       ...prev,
       characters: [
         ...prev.characters,
-        {
-          id: newId('tc'),
-          name: c.name,
-          meta: { world: c.world, job: c.job, level: c.level, image: c.image },
-          disabledItemIds: [],
-        },
+        ...toAdd.map(
+          (c): TodoCharacter => ({
+            id: newId('tc'),
+            name: c.name,
+            meta: {
+              world: c.world,
+              job: c.job,
+              level: c.level,
+              image: c.image,
+              ocid: c.ocid,
+              ...(accountId ? { accountId } : {}),
+            },
+            disabledItemIds: [],
+          }),
+        ),
       ],
     }));
+    // 계정 목록 API에는 이미지가 없어 캐릭터 기본 정보로 아바타를 채운다 (실패해도 무방)
+    for (const c of toAdd.filter((c) => !c.image)) {
+      searchCharacter(c.name)
+        .then((info) =>
+          setState((prev) => ({
+            ...prev,
+            characters: prev.characters.map((tc) =>
+              tc.name === c.name && !tc.meta?.image
+                ? { ...tc, meta: { ...tc.meta, image: info.image } }
+                : tc,
+            ),
+          })),
+        )
+        .catch(() => {});
+    }
+  };
+
+  const addSearchedCharacter = (c: LookupCharacter) => {
+    addCharacters('', [c]);
   };
 
   const removeCharacter = (id: string) => {
@@ -153,21 +282,32 @@ export function TodoPage() {
             </span>
           </div>
         </div>
-        <button className="btn primary" onClick={() => setShowAddCharacter(true)}>
-          캐릭터 추가
-        </button>
+        <div className="todo-toolbar-actions">
+          {anyLinked && (
+            <button
+              className="btn ghost"
+              onClick={() => refreshSchedules(true)}
+              disabled={anyLoading}
+            >
+              {anyLoading ? '갱신 중…' : '현황 새로고침'}
+            </button>
+          )}
+          <button className="btn primary" onClick={() => setShowImport(true)}>
+            캐릭터 목록 가져오기
+          </button>
+        </div>
       </div>
 
       {state.characters.length === 0 ? (
         <div className="empty-board">
           <h2>캐릭터를 추가해주세요</h2>
           <p>
-            캐릭터를 불러오면 주간보스·수로·에픽던전·미니게임 진행 상황을
+            넥슨 API 키로 계정을 연결하면 계정 전체 캐릭터를 한 번에 불러오고,
             <br />
-            캐릭터별로 체크하고 관리할 수 있습니다.
+            주간보스·수로·에픽던전 진행 상황이 자동으로 체크됩니다.
           </p>
-          <button className="btn primary" onClick={() => setShowAddCharacter(true)}>
-            캐릭터 추가
+          <button className="btn primary" onClick={() => setShowImport(true)}>
+            캐릭터 목록 가져오기
           </button>
         </div>
       ) : (
@@ -175,33 +315,50 @@ export function TodoPage() {
           <div className="todo-grid" style={gridStyle}>
             {/* 헤더 행: 캐릭터 */}
             <div className="todo-corner" />
-            {state.characters.map((c) => (
-              <div key={c.id} className="todo-char-head">
-                <CharacterAvatar src={c.meta?.image} size={52} />
-                <strong>{c.name}</strong>
-                {c.meta && (
-                  <span className="todo-char-sub">
-                    Lv.{c.meta.level} · {c.meta.world}
-                  </span>
-                )}
-                <div className="todo-char-actions">
-                  <button
-                    className="icon-btn"
-                    title="사용할 항목 설정"
-                    onClick={() => setSettingsCharId(c.id)}
-                  >
-                    항목 설정
-                  </button>
-                  <button
-                    className="icon-btn danger"
-                    title="캐릭터 제거"
-                    onClick={() => removeCharacter(c.id)}
-                  >
-                    ✕
-                  </button>
+            {state.characters.map((c) => {
+              const slot = schedules[c.id];
+              const account = c.meta?.accountId
+                ? accountById.get(c.meta.accountId)
+                : undefined;
+              return (
+                <div key={c.id} className="todo-char-head">
+                  <CharacterAvatar src={c.meta?.image} size={52} />
+                  <strong>{c.name}</strong>
+                  {c.meta && (
+                    <span className="todo-char-sub">
+                      Lv.{c.meta.level} · {c.meta.world}
+                    </span>
+                  )}
+                  {account && (
+                    <span
+                      className={'todo-sync-badge' + (slot?.error ? ' warn' : '')}
+                      title={
+                        slot?.error ??
+                        `'${account.label}' 계정 API로 자동 체크 중`
+                      }
+                    >
+                      {slot?.error ? '연동 오류' : slot?.loading ? '조회 중…' : 'API 연동'}
+                    </span>
+                  )}
+                  <div className="todo-char-actions">
+                    <button
+                      className="icon-btn"
+                      title="사용할 항목 설정"
+                      onClick={() => setSettingsCharId(c.id)}
+                    >
+                      항목 설정
+                    </button>
+                    <button
+                      className="icon-btn danger"
+                      title="캐릭터 제거"
+                      onClick={() => removeCharacter(c.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* 항목 행 */}
             {state.items.map((item) => (
@@ -211,6 +368,7 @@ export function TodoPage() {
                 characters={state.characters}
                 isEnabled={isEnabled}
                 isChecked={isChecked}
+                autoProgress={autoProgress}
                 onToggle={toggleCheck}
                 onRemove={() => removeItem(item)}
               />
@@ -224,11 +382,18 @@ export function TodoPage() {
         </div>
       )}
 
-      {showAddCharacter && (
-        <AddCharacterModal
+      {showImport && (
+        <ImportCharactersModal
+          accounts={state.accounts}
           existingNames={state.characters.map((c) => c.name)}
-          onAdd={addCharacter}
-          onClose={() => setShowAddCharacter(false)}
+          existingOcids={state.characters
+            .map((c) => c.meta?.ocid)
+            .filter((o): o is string => Boolean(o))}
+          onAddAccount={addAccount}
+          onRemoveAccount={removeAccount}
+          onAddCharacters={addCharacters}
+          onAddSearched={addSearchedCharacter}
+          onClose={() => setShowImport(false)}
         />
       )}
       {showAddItem && (
@@ -251,6 +416,7 @@ function TodoRow({
   characters,
   isEnabled,
   isChecked,
+  autoProgress,
   onToggle,
   onRemove,
 }: {
@@ -258,6 +424,10 @@ function TodoRow({
   characters: TodoCharacter[];
   isEnabled(item: TodoItem, c: TodoCharacter): boolean;
   isChecked(item: TodoItem, c: TodoCharacter): boolean;
+  autoProgress(
+    item: TodoItem,
+    c: TodoCharacter,
+  ): { done: number; total: number; complete: boolean } | null;
   onToggle(item: TodoItem, c: TodoCharacter): void;
   onRemove(): void;
 }) {
@@ -282,6 +452,23 @@ function TodoRow({
             />
           );
         }
+        const auto = autoProgress(item, c);
+        if (auto) {
+          return (
+            <div
+              key={c.id}
+              className={'todo-cell auto' + (auto.complete ? ' done' : '')}
+              title={`${c.name} · ${item.label} — API 자동 (${auto.done}/${auto.total})`}
+            >
+              <span className="todo-check-circle">{auto.complete ? '✓' : ''}</span>
+              {auto.total > 1 && (
+                <span className="todo-count">
+                  {auto.done}/{auto.total}
+                </span>
+              )}
+            </div>
+          );
+        }
         const done = isChecked(item, c);
         return (
           <button
@@ -299,14 +486,276 @@ function TodoRow({
   );
 }
 
-function AddCharacterModal({
+/* ───── 캐릭터 목록 가져오기 모달 ───── */
+
+function ImportCharactersModal({
+  accounts,
+  existingNames,
+  existingOcids,
+  onAddAccount,
+  onRemoveAccount,
+  onAddCharacters,
+  onAddSearched,
+  onClose,
+}: {
+  accounts: TodoAccount[];
+  existingNames: string[];
+  existingOcids: string[];
+  onAddAccount(label: string, apiKey: string): TodoAccount;
+  onRemoveAccount(id: string): void;
+  onAddCharacters(accountId: string, list: LookupCharacter[]): void;
+  onAddSearched(c: LookupCharacter): void;
+  onClose(): void;
+}) {
+  const [tab, setTab] = useState<'account' | 'search'>('account');
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal import-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>캐릭터 목록 가져오기</h2>
+          <button className="btn ghost sm" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+
+        <div className="tab-bar">
+          <button
+            className={'tab' + (tab === 'account' ? ' on' : '')}
+            onClick={() => setTab('account')}
+          >
+            계정에서 가져오기
+          </button>
+          <button
+            className={'tab' + (tab === 'search' ? ' on' : '')}
+            onClick={() => setTab('search')}
+          >
+            캐릭터명 검색
+          </button>
+        </div>
+
+        {tab === 'account' ? (
+          <AccountImportTab
+            accounts={accounts}
+            existingNames={existingNames}
+            existingOcids={existingOcids}
+            onAddAccount={onAddAccount}
+            onRemoveAccount={onRemoveAccount}
+            onAddCharacters={onAddCharacters}
+          />
+        ) : (
+          <SearchImportTab existingNames={existingNames} onAdd={onAddSearched} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AccountImportTab({
+  accounts,
+  existingNames,
+  existingOcids,
+  onAddAccount,
+  onRemoveAccount,
+  onAddCharacters,
+}: {
+  accounts: TodoAccount[];
+  existingNames: string[];
+  existingOcids: string[];
+  onAddAccount(label: string, apiKey: string): TodoAccount;
+  onRemoveAccount(id: string): void;
+  onAddCharacters(accountId: string, list: LookupCharacter[]): void;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(
+    accounts[0]?.id ?? null,
+  );
+  const [showKeyForm, setShowKeyForm] = useState(accounts.length === 0);
+  const [label, setLabel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [list, setList] = useState<LookupCharacter[] | null>(null);
+  const [listAccountId, setListAccountId] = useState<string | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [addedCount, setAddedCount] = useState<number | null>(null);
+
+  const selected = accounts.find((a) => a.id === selectedId) ?? null;
+
+  const submitAccount = () => {
+    if (!label.trim() || !apiKey.trim()) return;
+    const account = onAddAccount(label.trim(), apiKey.trim());
+    setSelectedId(account.id);
+    setShowKeyForm(false);
+    setLabel('');
+    setApiKey('');
+    // 방금 추가한 계정으로 바로 목록 조회
+    void loadList(account);
+  };
+
+  const loadList = async (account: TodoAccount) => {
+    setLoading(true);
+    setError(null);
+    setAddedCount(null);
+    try {
+      const characters = await fetchAccountCharacters(account.apiKey);
+      setList(characters);
+      setListAccountId(account.id);
+      setChecked(new Set());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '조회에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = (ocid: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(ocid)) next.delete(ocid);
+      else next.add(ocid);
+      return next;
+    });
+  };
+
+  const addSelected = () => {
+    if (!list || !listAccountId) return;
+    const chosen = list.filter((c) => checked.has(c.ocid));
+    onAddCharacters(listAccountId, chosen);
+    setAddedCount(chosen.length);
+    setChecked(new Set());
+  };
+
+  return (
+    <div className="import-body">
+      <p className="import-desc">
+        계정별{' '}
+        <a href="https://openapi.nexon.com" target="_blank" rel="noreferrer">
+          넥슨 Open API
+        </a>{' '}
+        키(live_로 시작)를 등록하면 해당 계정의 전체 캐릭터를 불러오고, 주간보스·수로·
+        에픽던전 진행 상황이 자동으로 체크됩니다. 키는 이 브라우저에만 저장됩니다.
+      </p>
+
+      {accounts.length > 0 && (
+        <div className="account-select-row">
+          {accounts.map((a) => (
+            <span
+              key={a.id}
+              className={'account-chip' + (a.id === selectedId ? ' on' : '')}
+            >
+              <button className="account-chip-name" onClick={() => setSelectedId(a.id)}>
+                {a.label}
+              </button>
+              <button
+                className="account-chip-remove"
+                title="계정 삭제"
+                onClick={() => onRemoveAccount(a.id)}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          <button className="btn ghost sm" onClick={() => setShowKeyForm((v) => !v)}>
+            ＋ 계정 추가
+          </button>
+        </div>
+      )}
+
+      {(showKeyForm || accounts.length === 0) && (
+        <div className="account-key-form">
+          <input
+            className="text-input"
+            placeholder="계정 이름 (예: 본계정)"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+          <input
+            className="text-input"
+            type="password"
+            placeholder="live_..."
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submitAccount()}
+          />
+          <button
+            className="btn primary"
+            onClick={submitAccount}
+            disabled={!label.trim() || !apiKey.trim()}
+          >
+            계정 등록
+          </button>
+        </div>
+      )}
+
+      {selected && (
+        <div className="search-row">
+          <button
+            className="btn primary"
+            onClick={() => loadList(selected)}
+            disabled={loading}
+          >
+            {loading ? '조회 중…' : `'${selected.label}' 캐릭터 목록 불러오기`}
+          </button>
+        </div>
+      )}
+
+      {error && <p className="notice warn">{error}</p>}
+      {addedCount != null && (
+        <p className="import-hint">캐릭터 {addedCount}개를 체크리스트에 추가했습니다.</p>
+      )}
+
+      {list && listAccountId === selectedId && (
+        <>
+          <div className="account-toolbar">
+            <span className="import-hint">
+              캐릭터 {list.length}개 · 선택 {checked.size}개
+            </span>
+            <button
+              className="btn primary sm"
+              disabled={checked.size === 0}
+              onClick={addSelected}
+            >
+              선택한 캐릭터 추가
+            </button>
+          </div>
+          <div className="account-list">
+            {list.map((c) => {
+              const exists =
+                existingNames.includes(c.name) || existingOcids.includes(c.ocid);
+              return (
+                <label
+                  key={c.ocid}
+                  className={'account-row' + (checked.has(c.ocid) ? ' on' : '')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked.has(c.ocid)}
+                    disabled={exists}
+                    onChange={() => toggle(c.ocid)}
+                  />
+                  <span className="account-name">
+                    {c.name}
+                    {exists && <em className="dup-mark"> (등록됨)</em>}
+                  </span>
+                  <span className="account-sub">
+                    {c.world} · {c.job} · Lv.{c.level}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SearchImportTab({
   existingNames,
   onAdd,
-  onClose,
 }: {
   existingNames: string[];
   onAdd(c: LookupCharacter): void;
-  onClose(): void;
 }) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -332,61 +781,55 @@ function AddCharacterModal({
   const duplicated = result != null && existingNames.includes(result.name);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal todo-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>체크리스트에 캐릭터 추가</h2>
-          <button className="btn ghost sm" onClick={onClose}>
-            닫기
+    <div className="import-body">
+      <p className="import-desc">
+        캐릭터명으로 개별 추가합니다. 이렇게 추가한 캐릭터는 API 자동 체크 없이
+        수동으로 체크합니다.
+      </p>
+      <div className="search-row">
+        <input
+          className="text-input"
+          placeholder="캐릭터명을 입력하세요"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && search()}
+          autoFocus
+        />
+        <button
+          className="btn primary"
+          onClick={search}
+          disabled={loading || !name.trim()}
+        >
+          {loading ? '조회 중…' : '검색'}
+        </button>
+      </div>
+
+      {error && <p className="notice warn">{error}</p>}
+
+      {result && (
+        <div className="lookup-card">
+          {result.image && <CharacterAvatar src={result.image} size={64} />}
+          <div className="lookup-info">
+            <strong>{result.name}</strong>
+            <span className="lookup-sub">
+              {result.world} · {result.job} · Lv.{result.level}
+            </span>
+          </div>
+          <button
+            className="btn primary sm"
+            disabled={added || duplicated}
+            onClick={() => {
+              onAdd(result);
+              setAdded(true);
+            }}
+          >
+            {added ? '추가됨' : duplicated ? '등록됨' : '추가'}
           </button>
         </div>
-        <div className="import-body">
-          <div className="search-row">
-            <input
-              className="text-input"
-              placeholder="캐릭터명을 입력하세요"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && search()}
-              autoFocus
-            />
-            <button
-              className="btn primary"
-              onClick={search}
-              disabled={loading || !name.trim()}
-            >
-              {loading ? '조회 중…' : '검색'}
-            </button>
-          </div>
-
-          {error && <p className="notice warn">{error}</p>}
-
-          {result && (
-            <div className="lookup-card">
-              {result.image && <CharacterAvatar src={result.image} size={64} />}
-              <div className="lookup-info">
-                <strong>{result.name}</strong>
-                <span className="lookup-sub">
-                  {result.world} · {result.job} · Lv.{result.level}
-                </span>
-              </div>
-              <button
-                className="btn primary sm"
-                disabled={added || duplicated}
-                onClick={() => {
-                  onAdd(result);
-                  setAdded(true);
-                }}
-              >
-                {added ? '추가됨' : duplicated ? '등록됨' : '추가'}
-              </button>
-            </div>
-          )}
-          {duplicated && !added && (
-            <p className="import-hint">이미 같은 이름의 캐릭터가 등록되어 있습니다.</p>
-          )}
-        </div>
-      </div>
+      )}
+      {duplicated && !added && (
+        <p className="import-hint">이미 같은 이름의 캐릭터가 등록되어 있습니다.</p>
+      )}
     </div>
   );
 }
