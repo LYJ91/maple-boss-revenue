@@ -15,7 +15,7 @@ export function ProtectedApp({ children }: { children: ReactNode }) {
     return <AuthMessage title="로그인 확인 중…" text="잠시만 기다려주세요." />;
   if (!session.data?.user) return <AuthForm />;
   return (
-    <UserStateProvider>
+    <UserStateProvider userId={session.data.user.id}>
       <UserBar email={session.data.user.email} />
       {children}
     </UserStateProvider>

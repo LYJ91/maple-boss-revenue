@@ -33,6 +33,8 @@ import {
   hasCalculatorData,
   hasHistoryData,
   hasTodoData,
+  markCacheOwner,
+  readCacheOwner,
   redactTodoKeys,
   type LegacyTodoState,
 } from "../lib/localMigration";
@@ -44,7 +46,13 @@ interface SyncContextValue {
 const SyncContext = createContext<SyncContextValue>({ status: "loading" });
 export const useSyncStatus = () => useContext(SyncContext);
 
-export function UserStateProvider({ children }: { children: ReactNode }) {
+export function UserStateProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId: string;
+}) {
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncContextValue>({
     status: "loading",
@@ -77,6 +85,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       const localCalculator = loadState();
       const localTodo = loadTodoState() as LegacyTodoState;
       const localHistory = loadHistory();
+      const cacheOwner = readCacheOwner();
       const [remoteCalc, remoteTodo, remoteHistory] = await Promise.all([
         getRemoteState("calculator"),
         getRemoteState<TodoState>("todo"),
@@ -92,9 +101,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         hasCalculatorData(localCalculator) ||
         hasTodoData(localTodo) ||
         hasHistoryData(localHistory);
-      let importLocal = true;
-      if (remoteIsEmpty && localHasData) {
+      const isLegacyCache = cacheOwner === null;
+      let importLocal = remoteIsEmpty && cacheOwner === userId;
+      if (isLegacyCache && localHasData) {
         backupLocalData(localCalculator, localTodo, localHistory);
+      }
+      if (remoteIsEmpty && isLegacyCache && localHasData) {
         importLocal = window.confirm(
           "이 브라우저에 로그인 전부터 저장된 데이터가 있습니다.\n이 데이터를 현재 로그인 계정으로 가져올까요?\n\n취소하면 이 계정은 빈 상태로 시작하며, 기존 데이터는 브라우저 백업에 보존됩니다.",
         );
@@ -104,27 +116,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         ? localCalculator
         : { characters: [], selectedId: null };
       if (remoteCalc.exists && remoteCalc.payload) {
-        const differs =
-          JSON.stringify(remoteCalc.payload) !==
-          JSON.stringify(localCalculator);
-        const overwrite =
-          differs &&
-          hasCalculatorData(localCalculator) &&
-          window.confirm(
-            "이 기기에 기존 보스수익 데이터가 있습니다. 이 기기 데이터로 서버를 덮어쓸까요?\n취소하면 서버 데이터를 사용합니다.",
-          );
-        if (overwrite) {
-          const saved = await putRemoteState(
-            "calculator",
-            localCalculator,
-            remoteCalc.revision,
-            true,
-          );
-          revisions.current.calculator = saved.revision;
-        } else {
-          calculator = remoteCalc.payload as typeof localCalculator;
-          revisions.current.calculator = remoteCalc.revision;
-        }
+        calculator = remoteCalc.payload as typeof localCalculator;
+        revisions.current.calculator = remoteCalc.revision;
       } else {
         const saved = await putRemoteState("calculator", calculator, 0);
         revisions.current.calculator = saved.revision;
@@ -139,27 +132,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             accounts: [],
           };
       if (remoteTodo.exists && remoteTodo.payload) {
-        const differs =
-          JSON.stringify(remoteTodo.payload) !== JSON.stringify(todo);
-        const overwrite =
-          differs &&
-          hasTodoData(localTodo) &&
-          window.confirm(
-            "이 기기에 기존 체크리스트 데이터가 있습니다. 이 기기 데이터로 서버를 덮어쓸까요?\n취소하면 서버 데이터를 사용합니다.",
-          );
-        if (overwrite) {
-          todo = await migrateAccounts(localTodo);
-          const saved = await putRemoteState(
-            "todo",
-            todo,
-            remoteTodo.revision,
-            true,
-          );
-          revisions.current.todo = saved.revision;
-        } else {
-          todo = remoteTodo.payload;
-          revisions.current.todo = remoteTodo.revision;
-        }
+        todo = remoteTodo.payload;
+        revisions.current.todo = remoteTodo.revision;
       } else {
         if (importLocal && hasTodoData(localTodo)) {
           todo = await migrateAccounts(localTodo);
@@ -195,13 +169,14 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       writeHistoryCache(history);
       baselines.current.calculator = JSON.stringify(calculator);
       baselines.current.todo = JSON.stringify(todo);
+      markCacheOwner(userId);
       setSyncStatus({ status: "saved" });
       setReady(true);
     }
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!ready) return;

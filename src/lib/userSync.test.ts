@@ -3,6 +3,8 @@ import { decryptText, encryptText } from "../../api/_lib/crypto";
 import { mergeHistory, mergeTodoChecks } from "../context/UserStateProvider";
 import {
   backupLocalData,
+  markCacheOwner,
+  readCacheOwner,
   redactTodoKeys,
   type LegacyTodoState,
 } from "./localMigration";
@@ -56,6 +58,12 @@ describe("legacy migration", () => {
     );
     expect(backup).toContain("live_secret");
     expect(backup).not.toContain("changed");
+  });
+
+  it("scopes the browser cache to the authenticated user", () => {
+    expect(readCacheOwner()).toBeNull();
+    markCacheOwner("user-a");
+    expect(readCacheOwner()).toBe("user-a");
   });
 });
 
