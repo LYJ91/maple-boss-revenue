@@ -23,10 +23,14 @@ import { LimitModal } from "./components/LimitModal";
 import { ImportModal } from "./components/ImportModal";
 import { CharacterPage } from "./pages/CharacterPage";
 import { TodoPage } from "./pages/TodoPage";
+import { StatsPage } from "./pages/StatsPage";
+import { BossesPage } from "./pages/BossesPage";
 import {
+  gotoBosses,
   gotoCharacter,
   gotoHome,
   gotoLookup,
+  gotoStats,
   gotoTodo,
   useRoute,
   type Route,
@@ -61,10 +65,12 @@ function HeaderSearch() {
   );
 }
 
-type MainTab = "calc" | "equip" | "todo";
+type MainTab = "calc" | "equip" | "todo" | "stats" | "bosses";
 
 function activeTab(route: Route): MainTab {
   if (route.view === "todo") return "todo";
+  if (route.view === "stats") return "stats";
+  if (route.view === "bosses") return "bosses";
   if (route.view === "character" || route.view === "lookup") return "equip";
   return "calc";
 }
@@ -74,6 +80,8 @@ function MainNav({ route }: { route: Route }) {
   const tabs: { key: MainTab; label: string; go(): void }[] = [
     { key: "todo", label: "체크리스트", go: gotoTodo },
     { key: "calc", label: "보스수익", go: gotoHome },
+    { key: "stats", label: "수익 통계", go: gotoStats },
+    { key: "bosses", label: "보스 정보", go: gotoBosses },
     { key: "equip", label: "장비확인", go: gotoLookup },
   ];
   return (
@@ -494,6 +502,10 @@ export default function App() {
         <LookupPage />
       ) : route.view === "todo" ? (
         <TodoPage />
+      ) : route.view === "stats" ? (
+        <StatsPage records={history} />
+      ) : route.view === "bosses" ? (
+        <BossesPage characters={state.characters} />
       ) : (
         <>
           <SummaryBar summary={summary} accountLabels={accountLabels} />
