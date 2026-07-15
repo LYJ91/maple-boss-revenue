@@ -2,7 +2,13 @@
 import { authClient, authUrl } from "../lib/auth";
 import { UserStateProvider, useSyncStatus } from "../context/UserStateProvider";
 
-export function ProtectedApp({ children }: { children: ReactNode }) {
+export function AuthApp({
+  children,
+  required,
+}: {
+  children: ReactNode;
+  required: boolean;
+}) {
   const session = authClient.useSession();
   if (!authUrl)
     return (
@@ -11,9 +17,10 @@ export function ProtectedApp({ children }: { children: ReactNode }) {
         text="Neon Auth 환경변수가 아직 연결되지 않았습니다."
       />
     );
+  if (session.isPending && !required) return children;
   if (session.isPending)
     return <AuthMessage title="로그인 확인 중…" text="잠시만 기다려주세요." />;
-  if (!session.data?.user) return <AuthForm />;
+  if (!session.data?.user) return required ? <AuthForm /> : children;
   return (
     <UserStateProvider userId={session.data.user.id}>
       <UserBar email={session.data.user.email} />

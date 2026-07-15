@@ -1,4 +1,5 @@
 ﻿import {
+  Fragment,
   createContext,
   useContext,
   useEffect,
@@ -6,7 +7,7 @@
   useState,
   type ReactNode,
 } from "react";
-import { loadState, writeStateCache } from "../lib/storage";
+import { loadState, writeStateCache, type AppState } from "../lib/storage";
 import {
   DEFAULT_TODO_ITEMS,
   loadTodoState,
@@ -38,6 +39,7 @@ import {
   redactTodoKeys,
   type LegacyTodoState,
 } from "../lib/localMigration";
+import { authClient } from "../lib/auth";
 
 interface SyncContextValue {
   status: "loading" | "saved" | "saving" | "offline" | "error";
@@ -53,7 +55,9 @@ export function UserStateProvider({
   children: ReactNode;
   userId: string;
 }) {
-  const [ready, setReady] = useState(false);
+  const warmStart = useRef(readCacheOwner() === userId);
+  const [ready, setReady] = useState(warmStart.current);
+  const [contentVersion, setContentVersion] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncContextValue>({
     status: "loading",
   });
@@ -61,31 +65,54 @@ export function UserStateProvider({
     calculator: 0,
     todo: 0,
   });
-  const baselines = useRef<Record<SyncScope, string>>({
-    calculator: "",
-    todo: "",
-  });
+  const baselines = useRef<Record<SyncScope, string>>(
+    warmStart.current
+      ? {
+          calculator: JSON.stringify(loadState()),
+          todo: JSON.stringify(
+            redactTodoKeys(loadTodoState() as LegacyTodoState),
+          ),
+        }
+      : { calculator: "", todo: "" },
+  );
   const timers = useRef<Partial<Record<SyncScope, number>>>({});
   const pending = useRef<Partial<Record<SyncScope, unknown>>>({});
   const channel = useRef<BroadcastChannel | null>(null);
+  const rehydrate = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     let cancelled = false;
-    void hydrate().catch((error) => {
-      if (!cancelled) {
-        setSyncStatus({
-          status: "error",
-          message:
-            error instanceof Error ? error.message : "동기화 초기화 실패",
-        });
-        setReady(false);
-      }
-    });
+    const runHydrate = () =>
+      void hydrate().catch((error) => {
+        if (!cancelled) {
+          if (warmStart.current) {
+            setSyncStatus({
+              status: "offline",
+              message: "저장된 화면을 표시 중이며 연결되면 다시 동기화합니다.",
+            });
+            setReady(true);
+          } else {
+            setSyncStatus({
+              status: "error",
+              message:
+                error instanceof Error ? error.message : "동기화 초기화 실패",
+            });
+            setReady(false);
+          }
+        }
+      });
+    rehydrate.current = runHydrate;
+    runHydrate();
     async function hydrate() {
       const localCalculator = loadState();
       const localTodo = loadTodoState() as LegacyTodoState;
       const localHistory = loadHistory();
       const cacheOwner = readCacheOwner();
+      const localSnapshot = {
+        calculator: JSON.stringify(localCalculator),
+        todo: JSON.stringify(redactTodoKeys(localTodo)),
+        history: JSON.stringify(localHistory),
+      };
       const [remoteCalc, remoteTodo, remoteHistory] = await Promise.all([
         getRemoteState("calculator"),
         getRemoteState<TodoState>("todo"),
@@ -153,9 +180,7 @@ export function UserStateProvider({
           .filter(
             (record) =>
               record ===
-              effectiveLocalHistory.find(
-                (local) => local.week === record.week,
-              ),
+              effectiveLocalHistory.find((local) => local.week === record.week),
           )
           .filter(
             (record) =>
@@ -164,6 +189,12 @@ export function UserStateProvider({
           )
           .map(putRemoteHistory),
       );
+      if (pending.current.calculator != null) {
+        calculator = pending.current.calculator as AppState;
+      }
+      if (pending.current.todo != null) {
+        todo = pending.current.todo as TodoState;
+      }
       writeStateCache(calculator);
       writeTodoCache(todo);
       writeHistoryCache(history);
@@ -172,9 +203,18 @@ export function UserStateProvider({
       markCacheOwner(userId);
       setSyncStatus({ status: "saved" });
       setReady(true);
+      if (
+        warmStart.current &&
+        (localSnapshot.calculator !== JSON.stringify(calculator) ||
+          localSnapshot.todo !== JSON.stringify(todo) ||
+          localSnapshot.history !== JSON.stringify(history))
+      ) {
+        setContentVersion((version) => version + 1);
+      }
     }
     return () => {
       cancelled = true;
+      rehydrate.current = () => undefined;
     };
   }, [userId]);
 
@@ -203,18 +243,34 @@ export function UserStateProvider({
         }
       });
     const onOnline = () => {
-      for (const scope of Object.keys(pending.current) as SyncScope[])
-        void saveScope(scope);
+      const scopes = Object.keys(pending.current) as SyncScope[];
+      if (scopes.length > 0) {
+        for (const scope of scopes) void saveScope(scope);
+      } else {
+        rehydrate.current();
+      }
     };
     if ("BroadcastChannel" in window) {
       channel.current = new BroadcastChannel("maple-user-state");
-      channel.current.onmessage = () => {
-        if (Object.keys(pending.current).length === 0) window.location.reload();
-        else
+      channel.current.onmessage = (
+        event: MessageEvent<{
+          userId: string;
+          scope: SyncScope;
+          revision: number;
+          payload: unknown;
+        }>,
+      ) => {
+        const message = event.data;
+        if (!message || message.userId !== userId) return;
+        if (pending.current[message.scope] != null) {
           setSyncStatus({
             status: "error",
-            message: "다른 탭 변경과 충돌했습니다. 저장 후 새로고침하세요.",
+            message: "다른 탭의 변경과 현재 수정 내용이 충돌했습니다.",
           });
+          return;
+        }
+        applyCachedScope(message.scope, message.payload, message.revision);
+        setSyncStatus({ status: "saved" });
       };
     }
     window.addEventListener(SYNC_EVENT, onChange);
@@ -227,7 +283,7 @@ export function UserStateProvider({
       channel.current?.close();
       channel.current = null;
     };
-  }, [ready]);
+  }, [ready, userId]);
 
   async function saveScope(scope: SyncScope) {
     const payload = pending.current[scope];
@@ -243,7 +299,12 @@ export function UserStateProvider({
       baselines.current[scope] = JSON.stringify(payload);
       delete pending.current[scope];
       setSyncStatus({ status: "saved" });
-      channel.current?.postMessage({ scope, revision: result.revision });
+      channel.current?.postMessage({
+        userId,
+        scope,
+        revision: result.revision,
+        payload,
+      });
     } catch (error) {
       const status =
         typeof error === "object" && error && "status" in error
@@ -263,14 +324,15 @@ export function UserStateProvider({
               merged,
               remote.revision,
             );
-            revisions.current.todo = result.revision;
-            baselines.current.todo = JSON.stringify(merged);
-            pending.current.todo = merged;
-            writeTodoCache(merged);
+            applyCachedScope("todo", merged, result.revision);
             delete pending.current.todo;
             setSyncStatus({ status: "saved" });
-            channel.current?.postMessage({ scope, revision: result.revision });
-            window.location.reload();
+            channel.current?.postMessage({
+              userId,
+              scope,
+              revision: result.revision,
+              payload: merged,
+            });
             return;
           }
         }
@@ -288,8 +350,19 @@ export function UserStateProvider({
           baselines.current[scope] = JSON.stringify(payload);
           delete pending.current[scope];
           setSyncStatus({ status: "saved" });
+          channel.current?.postMessage({
+            userId,
+            scope,
+            revision: result.revision,
+            payload,
+          });
         } else {
-          window.location.reload();
+          const remote = await getRemoteState(scope);
+          if (remote.exists && remote.payload) {
+            applyCachedScope(scope, remote.payload, remote.revision);
+            delete pending.current[scope];
+            setSyncStatus({ status: "saved" });
+          }
         }
       } else
         setSyncStatus({
@@ -297,6 +370,21 @@ export function UserStateProvider({
           message: "연결되면 자동 재시도합니다.",
         });
     }
+  }
+
+  function applyCachedScope(
+    scope: SyncScope,
+    payload: unknown,
+    revision: number,
+  ): void {
+    if (scope === "calculator") {
+      writeStateCache(payload as AppState);
+    } else {
+      writeTodoCache(payload as TodoState);
+    }
+    revisions.current[scope] = revision;
+    baselines.current[scope] = JSON.stringify(payload);
+    setContentVersion((version) => version + 1);
   }
 
   function handleAuthenticationFailure(error: unknown): boolean {
@@ -317,7 +405,7 @@ export function UserStateProvider({
   return (
     <SyncContext.Provider value={syncStatus}>
       {ready ? (
-        children
+        <Fragment key={contentVersion}>{children}</Fragment>
       ) : syncStatus.status === "error" ? (
         <div className="auth-screen">
           <div className="auth-card">
@@ -336,8 +424,8 @@ export function UserStateProvider({
             <button
               className="btn ghost"
               onClick={() =>
-                void import("../lib/auth")
-                  .then(({ authClient }) => authClient.signOut())
+                void authClient
+                  .signOut()
                   .finally(() => window.location.reload())
               }
             >

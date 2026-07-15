@@ -1,4 +1,6 @@
-﻿export type SyncScope = "calculator" | "todo";
+﻿import { authToken } from "./auth";
+
+export type SyncScope = "calculator" | "todo";
 export const SYNC_EVENT = "maple:sync-change";
 export const HISTORY_EVENT = "maple:history-change";
 
@@ -14,7 +16,6 @@ async function authenticatedFetch<T>(
   url: string,
   init?: RequestInit,
 ): Promise<T> {
-  const { authToken } = await import("./auth");
   const token = await authToken();
   const res = await fetch(url, {
     ...init,
