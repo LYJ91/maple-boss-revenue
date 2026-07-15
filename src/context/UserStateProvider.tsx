@@ -219,9 +219,14 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       );
     };
     const onHistory = (event: Event) =>
-      void putRemoteHistory((event as CustomEvent).detail).catch(() =>
-        setSyncStatus({ status: "offline", message: "주간 기록 재시도 대기" }),
-      );
+      void putRemoteHistory((event as CustomEvent).detail).catch((error) => {
+        if (!handleAuthenticationFailure(error)) {
+          setSyncStatus({
+            status: "offline",
+            message: "주간 기록 재시도 대기",
+          });
+        }
+      });
     const onOnline = () => {
       for (const scope of Object.keys(pending.current) as SyncScope[])
         void saveScope(scope);
@@ -269,6 +274,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         typeof error === "object" && error && "status" in error
           ? error.status
           : 0;
+      if (handleAuthenticationFailure(error)) return;
       if (status === 409) {
         if (scope === "todo") {
           const remote = await getRemoteState<TodoState>("todo");
@@ -318,6 +324,21 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function handleAuthenticationFailure(error: unknown): boolean {
+    const status =
+      typeof error === "object" && error && "status" in error
+        ? error.status
+        : 0;
+    if (status !== 401) return false;
+    setReady(false);
+    setSyncStatus({
+      status: "error",
+      message:
+        "로그인 인증이 만료되었거나 유효하지 않습니다. 로그아웃 후 다시 로그인해주세요.",
+    });
+    return true;
+  }
+
   return (
     <SyncContext.Provider value={syncStatus}>
       {ready ? (
@@ -336,6 +357,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               onClick={() => window.location.reload()}
             >
               다시 시도
+            </button>
+            <button
+              className="btn ghost"
+              onClick={() =>
+                void import("../lib/auth")
+                  .then(({ authClient }) => authClient.signOut())
+                  .finally(() => window.location.reload())
+              }
+            >
+              로그아웃 후 다시 로그인
             </button>
             <a className="auth-public-link" href="#/lookup">
               로그인 없이 장비 검색
