@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type { ResetDay, TodoAccount, TodoCharacter, TodoItem } from "../types";
 import {
   fetchAccountCharacters,
@@ -284,8 +285,8 @@ export function TodoPage() {
     state.characters.find((c) => c.id === settingsCharId) ?? null;
 
   const gridStyle = {
-    gridTemplateColumns: `220px repeat(${state.characters.length}, minmax(150px, 1fr))`,
-  };
+    "--todo-character-count": state.characters.length,
+  } as CSSProperties;
 
   return (
     <div className="todo-page">

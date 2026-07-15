@@ -2203,6 +2203,10 @@ body {
 
 .todo-grid {
   display: grid;
+  grid-template-columns: 220px repeat(
+      var(--todo-character-count),
+      minmax(150px, 1fr)
+    );
   gap: 8px;
   min-width: fit-content;
 }
@@ -2457,6 +2461,133 @@ body {
 .todo-settings-name {
   font-weight: 600;
   font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .todo-page {
+    gap: 10px;
+  }
+
+  .todo-toolbar {
+    align-items: stretch;
+  }
+
+  .todo-toolbar-actions {
+    width: 100%;
+  }
+
+  .todo-toolbar-actions .btn {
+    flex: 1;
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+
+  .todo-scroll {
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+
+  .todo-grid {
+    grid-template-columns: 84px repeat(var(--todo-character-count), 102px);
+    gap: 6px;
+  }
+
+  .todo-corner,
+  .todo-item-label {
+    box-shadow: 6px 0 0 var(--bg);
+  }
+
+  .todo-char-head {
+    scroll-snap-align: start;
+    gap: 3px;
+    padding: 8px 4px 7px;
+    border-radius: 10px;
+  }
+
+  .todo-char-head .avatar-frame {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .todo-char-head strong {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .todo-char-sub {
+    display: none;
+  }
+
+  .todo-sync-badge {
+    max-width: 92px;
+    padding-inline: 6px;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .todo-char-actions {
+    width: 100%;
+    gap: 3px;
+    justify-content: center;
+    margin-top: 2px;
+  }
+
+  .todo-char-actions .icon-btn {
+    padding: 2px 5px;
+    font-size: 9.5px;
+  }
+
+  .todo-item-label {
+    position: sticky;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 42px;
+    padding: 5px 7px;
+  }
+
+  .todo-item-name {
+    width: 100%;
+    font-size: 11.5px;
+  }
+
+  .reset-badge {
+    padding: 1px 5px;
+    font-size: 8.5px;
+  }
+
+  .todo-item-remove {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    padding: 0 3px;
+    opacity: 0.65;
+  }
+
+  .todo-cell {
+    min-height: 42px;
+  }
+
+  .todo-cell.auto {
+    gap: 5px;
+  }
+
+  .todo-check-circle {
+    width: 20px;
+    height: 20px;
+  }
+
+  .todo-count {
+    font-size: 11.5px;
+  }
 }
 
 /* ───── 반응형 ───── */
