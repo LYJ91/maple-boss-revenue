@@ -4,9 +4,10 @@
  * 주가 넘어가면 새 주차 키로 기록이 시작되고 지난 주 기록은 그대로 남는다.
  */
 
-import { weekKey } from './week';
+import { weekKey } from "./week";
+import { notifyHistory } from "./sync";
 
-const STORAGE_KEY = 'maple-boss-revenue:history:v1';
+const STORAGE_KEY = "maple-boss-revenue:history:v1";
 /** 보관할 최대 주차 수 (약 1년) */
 const MAX_WEEKS = 52;
 
@@ -32,7 +33,9 @@ export function loadHistory(): WeekRecord[] {
       const parsed = JSON.parse(raw) as WeekRecord[];
       if (Array.isArray(parsed)) {
         return parsed
-          .filter((r) => typeof r.week === 'string' && typeof r.revenue === 'number')
+          .filter(
+            (r) => typeof r.week === "string" && typeof r.revenue === "number",
+          )
           .sort((a, b) => b.week.localeCompare(a.week));
       }
     }
@@ -42,7 +45,7 @@ export function loadHistory(): WeekRecord[] {
   return [];
 }
 
-function save(records: WeekRecord[]): void {
+export function writeHistoryCache(records: WeekRecord[]): void {
   try {
     localStorage.setItem(
       STORAGE_KEY,
@@ -55,20 +58,21 @@ function save(records: WeekRecord[]): void {
 
 /** 이번 주 기록을 갱신(없으면 생성)하고 전체 기록을 최신순으로 반환한다 */
 export function recordCurrentWeek(
-  data: Omit<WeekRecord, 'week' | 'updatedAt'>,
+  data: Omit<WeekRecord, "week" | "updatedAt">,
   now: Date = new Date(),
 ): WeekRecord[] {
-  const week = weekKey('thu', now);
+  const week = weekKey("thu", now);
   const records = loadHistory().filter((r) => r.week !== week);
   records.unshift({ ...data, week, updatedAt: now.toISOString() });
   records.sort((a, b) => b.week.localeCompare(a.week));
-  save(records);
+  writeHistoryCache(records);
+  notifyHistory(records[0]);
   return records;
 }
 
 /** 주차 키(목요일 날짜) → "M/D(목) ~ M/D(수)" 범위 라벨 */
 export function weekRangeLabel(week: string): string {
-  const [y, m, d] = week.split('-').map(Number);
+  const [y, m, d] = week.split("-").map(Number);
   const start = new Date(y, m - 1, d);
   const end = new Date(y, m - 1, d + 6);
   const fmt = (date: Date) => `${date.getMonth() + 1}/${date.getDate()}`;

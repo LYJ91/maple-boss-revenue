@@ -1,6 +1,6 @@
-export type Difficulty = 'easy' | 'normal' | 'hard' | 'chaos' | 'extreme';
+export type Difficulty = "easy" | "normal" | "hard" | "chaos" | "extreme";
 
-export type ResetType = 'daily' | 'weekly' | 'monthly';
+export type ResetType = "daily" | "weekly" | "monthly";
 
 /** 특정 시점부터 적용되는 결정석 가격 (공지의 발효일 처리용) */
 export interface PricePoint {
@@ -58,16 +58,16 @@ export interface Character {
 
 /* ───── 주간 체크리스트 ───── */
 
-/** 넥슨 Open API 키로 연결한 계정 (키는 이 브라우저의 localStorage에만 저장) */
+/** 서버에 암호화 저장된 넥슨 Open API 계정 참조 (키는 클라이언트에 노출하지 않음) */
 export interface TodoAccount {
   id: string;
   /** 사용자가 붙인 계정 이름 (예: 본계정, 부계정) */
   label: string;
-  apiKey: string;
+  connected: boolean;
 }
 
 /** 주간 리셋 요일 (월요일: 길드 콘텐츠 / 목요일: 주간 보스·에픽 던전 등) */
-export type ResetDay = 'mon' | 'thu';
+export type ResetDay = "mon" | "thu";
 
 export interface TodoItem {
   id: string;

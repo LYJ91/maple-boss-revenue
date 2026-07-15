@@ -3,16 +3,24 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "description": "메이플스토리 보스 결정석(강렬한 힘의 결정) 주간/월간 수익 계산기",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "db:migrate": "node scripts/migrate-db.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
+    "@neondatabase/neon-js": "^0.6.2-beta",
+    "@neondatabase/serverless": "^1.1.0",
+    "jose": "^6.2.3",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

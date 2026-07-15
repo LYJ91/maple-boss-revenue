@@ -1,28 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ResetDay, TodoAccount, TodoCharacter, TodoItem } from '../types';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ResetDay, TodoAccount, TodoCharacter, TodoItem } from "../types";
 import {
   fetchAccountCharacters,
   searchCharacter,
   type LookupCharacter,
-} from '../lib/nexon';
+} from "../lib/nexon";
 import {
   AUTO_ITEM_PROGRESS,
   fetchScheduler,
   type SchedulerState,
-} from '../lib/scheduler';
-import { CharacterAvatar } from '../components/CharacterAvatar';
-import { RESET_DAY_LABEL, weekKey } from '../lib/week';
+} from "../lib/scheduler";
+import { CharacterAvatar } from "../components/CharacterAvatar";
+import { RESET_DAY_LABEL, weekKey } from "../lib/week";
 import {
   checkKey,
   loadTodoState,
   saveTodoState,
   type TodoState,
-} from '../lib/todoStorage';
+} from "../lib/todoStorage";
+import { createServerAccount, deleteServerAccount } from "../lib/sync";
 
-let idCounter = 0;
 function newId(prefix: string): string {
-  idCounter += 1;
-  return `${prefix}-${Date.now().toString(36)}-${idCounter}`;
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 /** 캐릭터별 스케줄러 조회 상태 */
@@ -61,7 +60,7 @@ export function TodoPage() {
           ...prev,
           [c.id]: { ...prev[c.id], loading: true },
         }));
-        fetchScheduler(ocid, account.apiKey, { force })
+        fetchScheduler(ocid, account.id, { force })
           .then((st) =>
             setSchedules((prev) => ({ ...prev, [c.id]: { state: st } })),
           )
@@ -71,7 +70,7 @@ export function TodoPage() {
               [c.id]: {
                 ...prev[c.id],
                 loading: false,
-                error: e instanceof Error ? e.message : '조회 실패',
+                error: e instanceof Error ? e.message : "조회 실패",
               },
             })),
           );
@@ -85,7 +84,8 @@ export function TodoPage() {
   }, [refreshSchedules]);
 
   const anyLinked = state.characters.some(
-    (c) => c.meta?.ocid && c.meta.accountId && accountById.has(c.meta.accountId),
+    (c) =>
+      c.meta?.ocid && c.meta.accountId && accountById.has(c.meta.accountId),
   );
   const anyLoading = Object.values(schedules).some((s) => s.loading);
 
@@ -121,7 +121,11 @@ export function TodoPage() {
         if (auto ? auto.complete : isChecked(item, c)) done += 1;
       }
     }
-    return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+    return {
+      done,
+      total,
+      pct: total > 0 ? Math.round((done / total) * 100) : 0,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, weekKeys, schedules]);
 
@@ -139,13 +143,16 @@ export function TodoPage() {
     });
   };
 
-  const addAccount = (label: string, apiKey: string): TodoAccount => {
-    const account: TodoAccount = { id: newId('acc'), label, apiKey };
+  const addAccount = async (
+    label: string,
+    apiKey: string,
+  ): Promise<TodoAccount> => {
+    const { account } = await createServerAccount(label, apiKey);
     setState((prev) => ({ ...prev, accounts: [...prev.accounts, account] }));
     return account;
   };
 
-  const removeAccount = (id: string) => {
+  const removeAccount = async (id: string) => {
     const target = state.accounts.find((a) => a.id === id);
     if (!target) return;
     if (
@@ -155,10 +162,17 @@ export function TodoPage() {
     ) {
       return;
     }
-    setState((prev) => ({
-      ...prev,
-      accounts: prev.accounts.filter((a) => a.id !== id),
-    }));
+    try {
+      await deleteServerAccount(id);
+      setState((prev) => ({
+        ...prev,
+        accounts: prev.accounts.filter((a) => a.id !== id),
+      }));
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "계정 삭제에 실패했습니다.",
+      );
+    }
   };
 
   const addCharacters = (accountId: string, list: LookupCharacter[]) => {
@@ -175,7 +189,7 @@ export function TodoPage() {
         ...prev.characters,
         ...toAdd.map(
           (c): TodoCharacter => ({
-            id: newId('tc'),
+            id: newId("tc"),
             name: c.name,
             meta: {
               world: c.world,
@@ -208,13 +222,14 @@ export function TodoPage() {
   };
 
   const addSearchedCharacter = (c: LookupCharacter) => {
-    addCharacters('', [c]);
+    addCharacters("", [c]);
   };
 
   const removeCharacter = (id: string) => {
     const target = state.characters.find((c) => c.id === id);
     if (!target) return;
-    if (!window.confirm(`'${target.name}' 캐릭터를 체크리스트에서 제거할까요?`)) return;
+    if (!window.confirm(`'${target.name}' 캐릭터를 체크리스트에서 제거할까요?`))
+      return;
     setState((prev) => ({
       ...prev,
       characters: prev.characters.filter((c) => c.id !== id),
@@ -242,13 +257,17 @@ export function TodoPage() {
     // 새 항목은 모든 캐릭터에서 기본 활성화 상태로 추가된다
     setState((prev) => ({
       ...prev,
-      items: [...prev.items, { id: newId('ti'), label, resetDay }],
+      items: [...prev.items, { id: newId("ti"), label, resetDay }],
     }));
     setShowAddItem(false);
   };
 
   const removeItem = (item: TodoItem) => {
-    if (!window.confirm(`'${item.label}' 항목을 삭제할까요? 체크 기록도 함께 사라집니다.`)) {
+    if (
+      !window.confirm(
+        `'${item.label}' 항목을 삭제할까요? 체크 기록도 함께 사라집니다.`,
+      )
+    ) {
       return;
     }
     setState((prev) => ({
@@ -289,7 +308,7 @@ export function TodoPage() {
               onClick={() => refreshSchedules(true)}
               disabled={anyLoading}
             >
-              {anyLoading ? '갱신 중…' : '현황 새로고침'}
+              {anyLoading ? "갱신 중…" : "현황 새로고침"}
             </button>
           )}
           <button className="btn primary" onClick={() => setShowImport(true)}>
@@ -331,13 +350,19 @@ export function TodoPage() {
                   )}
                   {account && (
                     <span
-                      className={'todo-sync-badge' + (slot?.error ? ' warn' : '')}
+                      className={
+                        "todo-sync-badge" + (slot?.error ? " warn" : "")
+                      }
                       title={
                         slot?.error ??
                         `'${account.label}' 계정 API로 자동 체크 중`
                       }
                     >
-                      {slot?.error ? '연동 오류' : slot?.loading ? '조회 중…' : 'API 연동'}
+                      {slot?.error
+                        ? "연동 오류"
+                        : slot?.loading
+                          ? "조회 중…"
+                          : "API 연동"}
                     </span>
                   )}
                   <div className="todo-char-actions">
@@ -375,7 +400,10 @@ export function TodoPage() {
             ))}
 
             {/* 항목 추가 행 */}
-            <button className="todo-add-row" onClick={() => setShowAddItem(true)}>
+            <button
+              className="todo-add-row"
+              onClick={() => setShowAddItem(true)}
+            >
               ＋ 체크리스트 항목 추가
             </button>
           </div>
@@ -438,7 +466,11 @@ function TodoRow({
           {RESET_DAY_LABEL[item.resetDay]}
         </span>
         <span className="todo-item-name">{item.label}</span>
-        <button className="icon-btn danger todo-item-remove" title="항목 삭제" onClick={onRemove}>
+        <button
+          className="icon-btn danger todo-item-remove"
+          title="항목 삭제"
+          onClick={onRemove}
+        >
           ✕
         </button>
       </div>
@@ -457,10 +489,12 @@ function TodoRow({
           return (
             <div
               key={c.id}
-              className={'todo-cell auto' + (auto.complete ? ' done' : '')}
+              className={"todo-cell auto" + (auto.complete ? " done" : "")}
               title={`${c.name} · ${item.label} — API 자동 (${auto.done}/${auto.total})`}
             >
-              <span className="todo-check-circle">{auto.complete ? '✓' : ''}</span>
+              <span className="todo-check-circle">
+                {auto.complete ? "✓" : ""}
+              </span>
               {auto.total > 1 && (
                 <span className="todo-count">
                   {auto.done}/{auto.total}
@@ -473,12 +507,12 @@ function TodoRow({
         return (
           <button
             key={c.id}
-            className={'todo-cell' + (done ? ' done' : '')}
+            className={"todo-cell" + (done ? " done" : "")}
             onClick={() => onToggle(item, c)}
             aria-pressed={done}
             title={`${c.name} · ${item.label}`}
           >
-            <span className="todo-check-circle">{done ? '✓' : ''}</span>
+            <span className="todo-check-circle">{done ? "✓" : ""}</span>
           </button>
         );
       })}
@@ -501,13 +535,13 @@ function ImportCharactersModal({
   accounts: TodoAccount[];
   existingNames: string[];
   existingOcids: string[];
-  onAddAccount(label: string, apiKey: string): TodoAccount;
-  onRemoveAccount(id: string): void;
+  onAddAccount(label: string, apiKey: string): Promise<TodoAccount>;
+  onRemoveAccount(id: string): void | Promise<void>;
   onAddCharacters(accountId: string, list: LookupCharacter[]): void;
   onAddSearched(c: LookupCharacter): void;
   onClose(): void;
 }) {
-  const [tab, setTab] = useState<'account' | 'search'>('account');
+  const [tab, setTab] = useState<"account" | "search">("account");
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -521,20 +555,20 @@ function ImportCharactersModal({
 
         <div className="tab-bar">
           <button
-            className={'tab' + (tab === 'account' ? ' on' : '')}
-            onClick={() => setTab('account')}
+            className={"tab" + (tab === "account" ? " on" : "")}
+            onClick={() => setTab("account")}
           >
             계정에서 가져오기
           </button>
           <button
-            className={'tab' + (tab === 'search' ? ' on' : '')}
-            onClick={() => setTab('search')}
+            className={"tab" + (tab === "search" ? " on" : "")}
+            onClick={() => setTab("search")}
           >
             캐릭터명 검색
           </button>
         </div>
 
-        {tab === 'account' ? (
+        {tab === "account" ? (
           <AccountImportTab
             accounts={accounts}
             existingNames={existingNames}
@@ -544,7 +578,10 @@ function ImportCharactersModal({
             onAddCharacters={onAddCharacters}
           />
         ) : (
-          <SearchImportTab existingNames={existingNames} onAdd={onAddSearched} />
+          <SearchImportTab
+            existingNames={existingNames}
+            onAdd={onAddSearched}
+          />
         )}
       </div>
     </div>
@@ -562,16 +599,16 @@ function AccountImportTab({
   accounts: TodoAccount[];
   existingNames: string[];
   existingOcids: string[];
-  onAddAccount(label: string, apiKey: string): TodoAccount;
-  onRemoveAccount(id: string): void;
+  onAddAccount(label: string, apiKey: string): Promise<TodoAccount>;
+  onRemoveAccount(id: string): void | Promise<void>;
   onAddCharacters(accountId: string, list: LookupCharacter[]): void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(
     accounts[0]?.id ?? null,
   );
   const [showKeyForm, setShowKeyForm] = useState(accounts.length === 0);
-  const [label, setLabel] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [label, setLabel] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [list, setList] = useState<LookupCharacter[] | null>(null);
@@ -581,15 +618,21 @@ function AccountImportTab({
 
   const selected = accounts.find((a) => a.id === selectedId) ?? null;
 
-  const submitAccount = () => {
+  const submitAccount = async () => {
     if (!label.trim() || !apiKey.trim()) return;
-    const account = onAddAccount(label.trim(), apiKey.trim());
-    setSelectedId(account.id);
-    setShowKeyForm(false);
-    setLabel('');
-    setApiKey('');
-    // 방금 추가한 계정으로 바로 목록 조회
-    void loadList(account);
+    setLoading(true);
+    setError(null);
+    try {
+      const account = await onAddAccount(label.trim(), apiKey.trim());
+      setSelectedId(account.id);
+      setShowKeyForm(false);
+      setLabel("");
+      setApiKey("");
+      await loadList(account);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "계정 등록에 실패했습니다.");
+      setLoading(false);
+    }
   };
 
   const loadList = async (account: TodoAccount) => {
@@ -597,12 +640,12 @@ function AccountImportTab({
     setError(null);
     setAddedCount(null);
     try {
-      const characters = await fetchAccountCharacters(account.apiKey);
+      const characters = await fetchAccountCharacters(account.id);
       setList(characters);
       setListAccountId(account.id);
       setChecked(new Set());
     } catch (e) {
-      setError(e instanceof Error ? e.message : '조회에 실패했습니다.');
+      setError(e instanceof Error ? e.message : "조회에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -628,12 +671,13 @@ function AccountImportTab({
   return (
     <div className="import-body">
       <p className="import-desc">
-        계정별{' '}
+        계정별{" "}
         <a href="https://openapi.nexon.com" target="_blank" rel="noreferrer">
           넥슨 Open API
-        </a>{' '}
-        키(live_로 시작)를 등록하면 해당 계정의 전체 캐릭터를 불러오고, 주간보스·수로·
-        에픽던전 진행 상황이 자동으로 체크됩니다. 키는 이 브라우저에만 저장됩니다.
+        </a>{" "}
+        키(live_로 시작)를 등록하면 해당 계정의 전체 캐릭터를 불러오고,
+        주간보스·수로· 에픽던전 진행 상황이 자동으로 체크됩니다. 키는 서버에서
+        암호화되어 저장되며 브라우저로 다시 전송되지 않습니다.
       </p>
 
       {accounts.length > 0 && (
@@ -641,9 +685,12 @@ function AccountImportTab({
           {accounts.map((a) => (
             <span
               key={a.id}
-              className={'account-chip' + (a.id === selectedId ? ' on' : '')}
+              className={"account-chip" + (a.id === selectedId ? " on" : "")}
             >
-              <button className="account-chip-name" onClick={() => setSelectedId(a.id)}>
+              <button
+                className="account-chip-name"
+                onClick={() => setSelectedId(a.id)}
+              >
                 {a.label}
               </button>
               <button
@@ -655,7 +702,10 @@ function AccountImportTab({
               </button>
             </span>
           ))}
-          <button className="btn ghost sm" onClick={() => setShowKeyForm((v) => !v)}>
+          <button
+            className="btn ghost sm"
+            onClick={() => setShowKeyForm((v) => !v)}
+          >
             ＋ 계정 추가
           </button>
         </div>
@@ -675,11 +725,11 @@ function AccountImportTab({
             placeholder="live_..."
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitAccount()}
+            onKeyDown={(e) => e.key === "Enter" && submitAccount()}
           />
           <button
             className="btn primary"
-            onClick={submitAccount}
+            onClick={() => void submitAccount()}
             disabled={!label.trim() || !apiKey.trim()}
           >
             계정 등록
@@ -694,14 +744,16 @@ function AccountImportTab({
             onClick={() => loadList(selected)}
             disabled={loading}
           >
-            {loading ? '조회 중…' : `'${selected.label}' 캐릭터 목록 불러오기`}
+            {loading ? "조회 중…" : `'${selected.label}' 캐릭터 목록 불러오기`}
           </button>
         </div>
       )}
 
       {error && <p className="notice warn">{error}</p>}
       {addedCount != null && (
-        <p className="import-hint">캐릭터 {addedCount}개를 체크리스트에 추가했습니다.</p>
+        <p className="import-hint">
+          캐릭터 {addedCount}개를 체크리스트에 추가했습니다.
+        </p>
       )}
 
       {list && listAccountId === selectedId && (
@@ -721,11 +773,12 @@ function AccountImportTab({
           <div className="account-list">
             {list.map((c) => {
               const exists =
-                existingNames.includes(c.name) || existingOcids.includes(c.ocid);
+                existingNames.includes(c.name) ||
+                existingOcids.includes(c.ocid);
               return (
                 <label
                   key={c.ocid}
-                  className={'account-row' + (checked.has(c.ocid) ? ' on' : '')}
+                  className={"account-row" + (checked.has(c.ocid) ? " on" : "")}
                 >
                   <input
                     type="checkbox"
@@ -757,7 +810,7 @@ function SearchImportTab({
   existingNames: string[];
   onAdd(c: LookupCharacter): void;
 }) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LookupCharacter | null>(null);
@@ -772,7 +825,7 @@ function SearchImportTab({
     try {
       setResult(await searchCharacter(name));
     } catch (e) {
-      setError(e instanceof Error ? e.message : '조회에 실패했습니다.');
+      setError(e instanceof Error ? e.message : "조회에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -792,7 +845,7 @@ function SearchImportTab({
           placeholder="캐릭터명을 입력하세요"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && search()}
+          onKeyDown={(e) => e.key === "Enter" && search()}
           autoFocus
         />
         <button
@@ -800,7 +853,7 @@ function SearchImportTab({
           onClick={search}
           disabled={loading || !name.trim()}
         >
-          {loading ? '조회 중…' : '검색'}
+          {loading ? "조회 중…" : "검색"}
         </button>
       </div>
 
@@ -823,12 +876,14 @@ function SearchImportTab({
               setAdded(true);
             }}
           >
-            {added ? '추가됨' : duplicated ? '등록됨' : '추가'}
+            {added ? "추가됨" : duplicated ? "등록됨" : "추가"}
           </button>
         </div>
       )}
       {duplicated && !added && (
-        <p className="import-hint">이미 같은 이름의 캐릭터가 등록되어 있습니다.</p>
+        <p className="import-hint">
+          이미 같은 이름의 캐릭터가 등록되어 있습니다.
+        </p>
       )}
     </div>
   );
@@ -841,8 +896,8 @@ function AddItemModal({
   onAdd(label: string, resetDay: ResetDay): void;
   onClose(): void;
 }) {
-  const [label, setLabel] = useState('');
-  const [resetDay, setResetDay] = useState<ResetDay>('thu');
+  const [label, setLabel] = useState("");
+  const [resetDay, setResetDay] = useState<ResetDay>("thu");
 
   const submit = () => {
     if (label.trim()) onAdd(label.trim(), resetDay);
@@ -864,7 +919,7 @@ function AddItemModal({
               placeholder="항목 이름 (예: 헤이븐 주간퀘)"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
               autoFocus
             />
             <select
@@ -878,10 +933,14 @@ function AddItemModal({
             </select>
           </div>
           <p className="import-hint">
-            추가한 항목은 모든 캐릭터에서 기본 활성화되며, 캐릭터별 '항목 설정'에서
-            사용 여부를 바꿀 수 있습니다.
+            추가한 항목은 모든 캐릭터에서 기본 활성화되며, 캐릭터별 '항목
+            설정'에서 사용 여부를 바꿀 수 있습니다.
           </p>
-          <button className="btn primary" onClick={submit} disabled={!label.trim()}>
+          <button
+            className="btn primary"
+            onClick={submit}
+            disabled={!label.trim()}
+          >
             추가
           </button>
         </div>
@@ -911,8 +970,8 @@ function CharacterSettingsModal({
           </button>
         </div>
         <p className="modal-sub">
-          이 캐릭터의 체크리스트에 사용할 항목을 선택하세요. 해제한 항목은 표에서
-          비활성화 표시됩니다.
+          이 캐릭터의 체크리스트에 사용할 항목을 선택하세요. 해제한 항목은
+          표에서 비활성화 표시됩니다.
         </p>
         <div className="todo-settings-list">
           {items.map((item) => {
@@ -920,7 +979,7 @@ function CharacterSettingsModal({
             return (
               <label
                 key={item.id}
-                className={'todo-settings-row' + (enabled ? ' on' : '')}
+                className={"todo-settings-row" + (enabled ? " on" : "")}
               >
                 <input
                   type="checkbox"

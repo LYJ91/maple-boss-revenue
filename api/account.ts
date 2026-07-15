@@ -1,10 +1,10 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+﻿import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireUser, authError } from "./_lib/auth.js";
+import { getNexonKey } from "./_lib/nexon.js";
 
-const NEXON_BASE = 'https://open.api.nexon.com/maplestory/v1';
-
+const NEXON_BASE = "https://open.api.nexon.com/maplestory/v1";
 interface NexonCharacterList {
   account_list: {
-    account_id: string;
     character_list: {
       ocid: string;
       character_name: string;
@@ -15,30 +15,33 @@ interface NexonCharacterList {
   }[];
 }
 
-/**
- * GET /api/account  (헤더 x-user-api-key: 방문자 본인의 넥슨 API 키)
- * 방문자 키 소유 계정의 전체 캐릭터 목록을 반환한다. 키는 저장하지 않고 전달만 한다.
- */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const userKey = req.headers['x-user-api-key'];
-  if (typeof userKey !== 'string' || !userKey.trim()) {
-    return res.status(400).json({ error: 'API 키를 입력해주세요.' });
+  res.setHeader("Cache-Control", "no-store");
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ error: "지원하지 않는 요청 방식입니다." });
   }
-
   try {
+    const user = await requireUser(req);
+    const accountId =
+      typeof req.query.accountId === "string" ? req.query.accountId.trim() : "";
+    if (!accountId)
+      return res.status(400).json({ error: "계정 ID가 필요합니다." });
+    const key = await getNexonKey(user.subject, accountId);
+    if (!key)
+      return res.status(404).json({ error: "연결된 계정을 찾을 수 없습니다." });
     const listRes = await fetch(`${NEXON_BASE}/character/list`, {
-      headers: { 'x-nxopen-api-key': userKey.trim() },
+      headers: { "x-nxopen-api-key": key },
     });
     if (!listRes.ok) {
       const message =
         listRes.status === 403
-          ? 'API 키가 유효하지 않습니다. live_로 시작하는 키인지 확인해주세요.'
+          ? "저장된 API 키가 유효하지 않습니다."
           : listRes.status === 429
-            ? '해당 키의 일일 조회 한도를 초과했습니다.'
+            ? "해당 키의 일일 조회 한도를 초과했습니다."
             : `넥슨 API 오류 (${listRes.status})`;
       return res.status(listRes.status).json({ error: message });
     }
-
     const data = (await listRes.json()) as NexonCharacterList;
     const characters = data.account_list
       .flatMap((account) => account.character_list)
@@ -50,11 +53,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         level: c.character_level,
       }))
       .sort((a, b) => b.level - a.level);
-
-    // 방문자별 응답이므로 캐시하지 않는다
-    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ characters });
-  } catch {
-    return res.status(502).json({ error: '넥슨 API 호출에 실패했습니다. 잠시 후 다시 시도해주세요.' });
+  } catch (error) {
+    const e = authError(error);
+    return res.status(e.status).json({ error: e.message });
   }
 }

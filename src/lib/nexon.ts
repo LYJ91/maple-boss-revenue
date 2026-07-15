@@ -1,4 +1,5 @@
 /** 넥슨 Open API 프록시(/api/*) 클라이언트 */
+import { authRequest } from "./sync";
 
 export interface LookupCharacter {
   ocid: string;
@@ -14,7 +15,7 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(url, init);
   } catch {
-    throw new Error('네트워크 오류가 발생했습니다. 연결을 확인해주세요.');
+    throw new Error("네트워크 오류가 발생했습니다. 연결을 확인해주세요.");
   }
   const body = (await res.json().catch(() => null)) as
     | (T & { error?: string })
@@ -32,13 +33,12 @@ export function searchCharacter(name: string): Promise<LookupCharacter> {
   );
 }
 
-/** 방문자 본인의 API 키로 계정 전체 캐릭터 목록 조회 */
+/** 로그인 사용자의 서버 저장 계정으로 전체 캐릭터 목록 조회 */
 export async function fetchAccountCharacters(
-  apiKey: string,
+  accountId: string,
 ): Promise<LookupCharacter[]> {
-  const { characters } = await request<{ characters: LookupCharacter[] }>(
-    '/api/account',
-    { headers: { 'x-user-api-key': apiKey.trim() } },
+  const { characters } = await authRequest<{ characters: LookupCharacter[] }>(
+    `/api/account?accountId=${encodeURIComponent(accountId)}`,
   );
   return characters;
 }
@@ -49,8 +49,11 @@ export async function fetchAccountCharacters(
  */
 export type DetailData = Record<string, any>;
 
-export function fetchDetail(ocid: string, parts: string[]): Promise<DetailData> {
+export function fetchDetail(
+  ocid: string,
+  parts: string[],
+): Promise<DetailData> {
   return request<DetailData>(
-    `/api/detail?ocid=${encodeURIComponent(ocid)}&parts=${parts.join(',')}`,
+    `/api/detail?ocid=${encodeURIComponent(ocid)}&parts=${parts.join(",")}`,
   );
 }

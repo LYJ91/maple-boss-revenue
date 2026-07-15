@@ -4,9 +4,9 @@
  * - 응답은 ocid별로 짧게 캐시해 새로고침/탭 이동 시 반복 호출을 막는다
  */
 
-import type { BossEntry, Difficulty } from '../types';
-import { BOSSES, RULES } from '../data/crystalData';
-import { request } from './nexon';
+import type { BossEntry, Difficulty } from "../types";
+import { BOSSES, RULES } from "../data/crystalData";
+import { authRequest } from "./sync";
 
 export interface SchedulerBoss {
   name: string;
@@ -33,7 +33,7 @@ export interface SchedulerState {
 
 /* ───── 조회 + 캐시 ───── */
 
-const CACHE_KEY = 'maple-boss-revenue:scheduler-cache:v1';
+const CACHE_KEY = "maple-boss-revenue:scheduler-cache:v1";
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface CacheEntry {
@@ -64,28 +64,29 @@ const inflight = new Map<string, Promise<SchedulerState>>();
 
 export async function fetchScheduler(
   ocid: string,
-  apiKey: string,
+  accountId: string,
   options?: { force?: boolean },
 ): Promise<SchedulerState> {
+  const cacheKey = `${accountId}:${ocid}`;
   if (!options?.force) {
-    const entry = readCache()[ocid];
-    if (entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS) return entry.state;
-    const pending = inflight.get(ocid);
+    const entry = readCache()[cacheKey];
+    if (entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS)
+      return entry.state;
+    const pending = inflight.get(cacheKey);
     if (pending) return pending;
   }
 
-  const promise = request<SchedulerState>(
-    `/api/scheduler?ocid=${encodeURIComponent(ocid)}`,
-    { headers: { 'x-user-api-key': apiKey.trim() } },
+  const promise = authRequest<SchedulerState>(
+    `/api/scheduler?ocid=${encodeURIComponent(ocid)}&accountId=${encodeURIComponent(accountId)}`,
   )
     .then((state) => {
       const cache = readCache();
-      cache[ocid] = { fetchedAt: Date.now(), state };
+      cache[cacheKey] = { fetchedAt: Date.now(), state };
       writeCache(cache);
       return state;
     })
-    .finally(() => inflight.delete(ocid));
-  inflight.set(ocid, promise);
+    .finally(() => inflight.delete(cacheKey));
+  inflight.set(cacheKey, promise);
   return promise;
 }
 
@@ -93,18 +94,20 @@ export async function fetchScheduler(
 
 /** 공백 차이("블러디퀸" vs "블러디 퀸")를 흡수하기 위한 정규화 */
 function normalizeName(name: string): string {
-  return name.replace(/\s+/g, '');
+  return name.replace(/\s+/g, "");
 }
 
 /** 정규화된 보스명+주기 → 앱 보스 id (주간/월간 보스만) */
 const BOSS_ID_BY_NAME: ReadonlyMap<string, string> = new Map(
-  BOSSES.filter((b) => b.reset === 'weekly' || b.reset === 'monthly').map((b) => [
-    `${b.reset}:${normalizeName(b.name)}`,
-    b.id,
-  ]),
+  BOSSES.filter((b) => b.reset === "weekly" || b.reset === "monthly").map(
+    (b) => [`${b.reset}:${normalizeName(b.name)}`, b.id],
+  ),
 );
 
-export function bossKey(bossId: string, difficulty: Difficulty | string): string {
+export function bossKey(
+  bossId: string,
+  difficulty: Difficulty | string,
+): string {
   return `${bossId}:${difficulty}`;
 }
 
@@ -117,7 +120,7 @@ export function completedBossKeys(state: SchedulerState): Set<string> {
   const keys = new Set<string>();
   for (const b of state.bosses) {
     if (!b.complete) continue;
-    const reset = b.cycle === 'bossMonthly' ? 'monthly' : 'weekly';
+    const reset = b.cycle === "bossMonthly" ? "monthly" : "weekly";
     const bossId = BOSS_ID_BY_NAME.get(`${reset}:${normalizeName(b.name)}`);
     if (bossId) keys.add(bossKey(bossId, b.difficulty));
   }
@@ -190,7 +193,7 @@ export function weeklyBossProgress(state: SchedulerState): AutoProgress {
   const total = state.weeklyBossClearLimit || WEEKLY_BOSS_DEFAULT_LIMIT;
   const clearedNames = new Set(
     state.bosses
-      .filter((b) => b.cycle !== 'bossMonthly' && b.complete)
+      .filter((b) => b.cycle !== "bossMonthly" && b.complete)
       .map((b) => normalizeName(b.name)),
   );
   const done = Math.min(clearedNames.size, total);
@@ -200,7 +203,7 @@ export function weeklyBossProgress(state: SchedulerState): AutoProgress {
 /** [길드] 지하 수로 참여 여부 */
 export function culvertProgress(state: SchedulerState): AutoProgress {
   const content = state.contents.find(
-    (c) => normalizeName(c.name) === normalizeName('[길드] 지하 수로'),
+    (c) => normalizeName(c.name) === normalizeName("[길드] 지하 수로"),
   );
   const done = content && content.nowCount > 0 ? 1 : 0;
   return { done, total: 1, complete: done >= 1 };
@@ -213,13 +216,17 @@ export function culvertProgress(state: SchedulerState): AutoProgress {
  */
 export function epicDungeonProgress(state: SchedulerState): AutoProgress {
   const dungeons = state.contents.filter(
-    (c) => normalizeName(c.name).startsWith('에픽던전') && c.registered,
+    (c) => normalizeName(c.name).startsWith("에픽던전") && c.registered,
   );
   const done = Math.min(
     dungeons.reduce((sum, d) => sum + Math.min(d.nowCount, 1), 0),
     EPIC_DUNGEON_WEEKLY_LIMIT,
   );
-  return { done, total: EPIC_DUNGEON_WEEKLY_LIMIT, complete: done >= EPIC_DUNGEON_WEEKLY_LIMIT };
+  return {
+    done,
+    total: EPIC_DUNGEON_WEEKLY_LIMIT,
+    complete: done >= EPIC_DUNGEON_WEEKLY_LIMIT,
+  };
 }
 
 /** 체크리스트 기본 항목 id → 자동 진행 계산 함수 (없으면 수동 항목) */
@@ -227,7 +234,7 @@ export const AUTO_ITEM_PROGRESS: Record<
   string,
   (state: SchedulerState) => AutoProgress
 > = {
-  'weekly-boss': weeklyBossProgress,
+  "weekly-boss": weeklyBossProgress,
   suro: culvertProgress,
-  'epic-dungeon': epicDungeonProgress,
+  "epic-dungeon": epicDungeonProgress,
 };

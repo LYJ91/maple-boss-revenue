@@ -1,6 +1,7 @@
-import type { Character } from '../types';
+import type { Character } from "../types";
+import { notifySync } from "./sync";
 
-const STORAGE_KEY = 'maple-boss-revenue:v1';
+const STORAGE_KEY = "maple-boss-revenue:v1";
 
 export interface AppState {
   characters: Character[];
@@ -41,8 +42,14 @@ export function loadState(): AppState {
 
 export function saveState(state: AppState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    writeStateCache(state);
+    notifySync("calculator", state);
   } catch {
     // 저장 실패(시크릿 모드 등)는 치명적이지 않으므로 무시
   }
+}
+
+/** 서버 hydrate/마지막 정상 스냅샷 갱신용. 동기화 이벤트는 발생시키지 않는다. */
+export function writeStateCache(state: AppState): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
