@@ -37,3 +37,27 @@ export function redactTodoKeys(state: LegacyTodoState): TodoState {
     })),
   };
 }
+
+const BACKUP_KEY = "maple-boss-revenue:pre-server-migration:v1";
+
+/** 계정 선택 전의 브라우저 원본을 한 번 보존해 잘못된 이관 선택으로 인한 손실을 막는다. */
+export function backupLocalData(
+  calculator: AppState,
+  todo: LegacyTodoState,
+  history: WeekRecord[],
+): void {
+  try {
+    if (localStorage.getItem(BACKUP_KEY)) return;
+    localStorage.setItem(
+      BACKUP_KEY,
+      JSON.stringify({
+        backedUpAt: new Date().toISOString(),
+        calculator,
+        todo,
+        history,
+      }),
+    );
+  } catch {
+    // 백업 저장이 불가능해도 서버 이관 자체는 계속할 수 있다.
+  }
+}

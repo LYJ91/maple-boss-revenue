@@ -1,13 +1,22 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decryptText, encryptText } from "../../api/_lib/crypto";
 import { mergeHistory, mergeTodoChecks } from "../context/UserStateProvider";
-import { redactTodoKeys, type LegacyTodoState } from "./localMigration";
+import {
+  backupLocalData,
+  redactTodoKeys,
+  type LegacyTodoState,
+} from "./localMigration";
 import type { TodoState } from "./todoStorage";
 
 beforeEach(() => {
   process.env.NEXON_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString(
     "base64",
   );
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  });
 });
 
 describe("AES-256-GCM credentials", () => {
@@ -31,6 +40,22 @@ describe("legacy migration", () => {
       { id: "a", label: "본계정", connected: true },
     ]);
     expect(JSON.stringify(redactTodoKeys(state))).not.toContain("live_secret");
+  });
+
+  it("preserves the original local data before making an import choice", () => {
+    const todo: LegacyTodoState = {
+      items: [],
+      characters: [],
+      checks: {},
+      accounts: [{ id: "a", label: "본계정", apiKey: "live_secret" }],
+    };
+    backupLocalData({ characters: [], selectedId: null }, todo, []);
+    backupLocalData({ characters: [], selectedId: "changed" }, todo, []);
+    const backup = localStorage.getItem(
+      "maple-boss-revenue:pre-server-migration:v1",
+    );
+    expect(backup).toContain("live_secret");
+    expect(backup).not.toContain("changed");
   });
 });
 

@@ -10,8 +10,27 @@ export const authClient = createAuthClient(
 );
 
 export async function authToken(): Promise<string> {
-  const result = await authClient.token();
-  const token = result.data?.token;
-  if (!token) throw new Error("로그인이 만료되었습니다. 다시 로그인해주세요.");
-  return token;
+  if (!authUrl) throw new Error("Neon Auth가 설정되지 않았습니다.");
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(`${authUrl.replace(/\/$/, "")}/token`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      lastStatus = response.status;
+      if (response.ok) {
+        const body = (await response.json()) as { token?: string };
+        if (body.token) return body.token;
+      }
+    } catch {
+      lastStatus = 0;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  throw new Error(
+    lastStatus === 401
+      ? "로그인이 만료되었습니다. 다시 로그인해주세요."
+      : "로그인 토큰을 발급하지 못했습니다. 잠시 후 다시 시도해주세요.",
+  );
 }

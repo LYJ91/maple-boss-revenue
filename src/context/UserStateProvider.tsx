@@ -8,6 +8,7 @@
 } from "react";
 import { loadState, writeStateCache } from "../lib/storage";
 import {
+  DEFAULT_TODO_ITEMS,
   loadTodoState,
   writeTodoCache,
   type TodoState,
@@ -28,7 +29,9 @@ import {
   type SyncScope,
 } from "../lib/sync";
 import {
+  backupLocalData,
   hasCalculatorData,
+  hasHistoryData,
   hasTodoData,
   redactTodoKeys,
   type LegacyTodoState,
@@ -67,7 +70,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           message:
             error instanceof Error ? error.message : "동기화 초기화 실패",
         });
-        setReady(true);
+        setReady(false);
       }
     });
     async function hydrate() {
@@ -81,7 +84,25 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       ]);
       if (cancelled) return;
 
-      let calculator = localCalculator;
+      const remoteIsEmpty =
+        !remoteCalc.exists &&
+        !remoteTodo.exists &&
+        (remoteHistory.records as WeekRecord[]).length === 0;
+      const localHasData =
+        hasCalculatorData(localCalculator) ||
+        hasTodoData(localTodo) ||
+        hasHistoryData(localHistory);
+      let importLocal = true;
+      if (remoteIsEmpty && localHasData) {
+        backupLocalData(localCalculator, localTodo, localHistory);
+        importLocal = window.confirm(
+          "이 브라우저에 로그인 전부터 저장된 데이터가 있습니다.\n이 데이터를 현재 로그인 계정으로 가져올까요?\n\n취소하면 이 계정은 빈 상태로 시작하며, 기존 데이터는 브라우저 백업에 보존됩니다.",
+        );
+      }
+
+      let calculator = importLocal
+        ? localCalculator
+        : { characters: [], selectedId: null };
       if (remoteCalc.exists && remoteCalc.payload) {
         const differs =
           JSON.stringify(remoteCalc.payload) !==
@@ -104,12 +125,19 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           calculator = remoteCalc.payload as typeof localCalculator;
           revisions.current.calculator = remoteCalc.revision;
         }
-      } else if (hasCalculatorData(localCalculator)) {
-        const saved = await putRemoteState("calculator", localCalculator, 0);
+      } else {
+        const saved = await putRemoteState("calculator", calculator, 0);
         revisions.current.calculator = saved.revision;
       }
 
-      let todo = redactTodoKeys(localTodo);
+      let todo: TodoState = importLocal
+        ? redactTodoKeys(localTodo)
+        : {
+            items: [...DEFAULT_TODO_ITEMS],
+            characters: [],
+            checks: {},
+            accounts: [],
+          };
       if (remoteTodo.exists && remoteTodo.payload) {
         const differs =
           JSON.stringify(remoteTodo.payload) !== JSON.stringify(todo);
@@ -132,14 +160,17 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           todo = remoteTodo.payload;
           revisions.current.todo = remoteTodo.revision;
         }
-      } else if (hasTodoData(localTodo)) {
-        todo = await migrateAccounts(localTodo);
+      } else {
+        if (importLocal && hasTodoData(localTodo)) {
+          todo = await migrateAccounts(localTodo);
+        }
         const saved = await putRemoteState("todo", todo, 0);
         revisions.current.todo = saved.revision;
       }
 
       const remoteRecords = remoteHistory.records as WeekRecord[];
-      const history = mergeHistory(remoteRecords, localHistory);
+      const effectiveLocalHistory = importLocal ? localHistory : [];
+      const history = mergeHistory(remoteRecords, effectiveLocalHistory);
       const remoteByWeek = new Map(
         remoteRecords.map((record) => [record.week, record]),
       );
@@ -148,7 +179,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           .filter(
             (record) =>
               record ===
-              localHistory.find((local) => local.week === record.week),
+              effectiveLocalHistory.find(
+                (local) => local.week === record.week,
+              ),
           )
           .filter(
             (record) =>
@@ -289,6 +322,26 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     <SyncContext.Provider value={syncStatus}>
       {ready ? (
         children
+      ) : syncStatus.status === "error" ? (
+        <div className="auth-screen">
+          <div className="auth-card">
+            <h2>데이터 동기화에 실패했습니다</h2>
+            <p>{syncStatus.message ?? "서버 데이터를 불러오지 못했습니다."}</p>
+            <p>
+              계정 데이터 보호를 위해 이 브라우저의 기존 캐릭터는 표시하지
+              않았습니다.
+            </p>
+            <button
+              className="btn primary"
+              onClick={() => window.location.reload()}
+            >
+              다시 시도
+            </button>
+            <a className="auth-public-link" href="#/lookup">
+              로그인 없이 장비 검색
+            </a>
+          </div>
+        </div>
       ) : (
         <div className="auth-screen">
           <div className="auth-card">
