@@ -82,6 +82,8 @@ describe('jobProfile', () => {
   it('제논은 3스탯, 데몬어벤져는 HP', () => {
     expect(jobProfile('제논').main).toEqual(['str', 'dex', 'luk']);
     expect(jobProfile('데몬어벤져').useHp).toBe(true);
+    expect(jobProfile('레테').attackType).toBe('magic');
+    expect(jobProfile('레테').main).toEqual(['int']);
   });
 
   it('모르는 직업은 스탯 수치로 추론한다', () => {

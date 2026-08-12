@@ -41,8 +41,7 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
       <div className="empty-board">
         <h2>아직 수익 기록이 없어요</h2>
         <p>
-          보스수익 탭에서 캐릭터의 보스를 설정하면 이번 주 수익이 자동으로
-          기록되고,
+          사이트에 접속하면 이번 주 수익이 자동으로 기록되고,
           <br />이 화면에 주간 추이가 표시됩니다.
         </p>
         <button className="btn primary" onClick={gotoHome}>
@@ -58,8 +57,8 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
         <div>
           <h2>수익 통계</h2>
           <p className="stats-sub">
-            보스수익 탭에서 자동 기록된 주간 수익 데이터를 시각화합니다. 로그인한
-            계정 기준이라 어느 기기에서든 동일하게 보입니다.
+            보스수익 탭에서 자동 기록된 주간 수익 데이터를 시각화합니다.
+            로그인한 계정 기준이라 어느 기기에서든 동일하게 보입니다.
           </p>
         </div>
         <div className="stats-toolbar">
@@ -89,7 +88,10 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
 
       <div className="stats-metrics">
         {metrics.map((m) => (
-          <div key={m.label} className={"metric-card" + (m.tone ? " " + m.tone : "")}>
+          <div
+            key={m.label}
+            className={"metric-card" + (m.tone ? " " + m.tone : "")}
+          >
             <span className="metric-label">{m.label}</span>
             <strong className="metric-value">{m.value}</strong>
             {m.sub && <span className="metric-sub">{m.sub}</span>}
@@ -97,9 +99,16 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
         ))}
       </div>
 
-      <RevenueChart data={view} showMonthly={showMonthly} currentWeek={currentWeek} />
+      <RevenueChart
+        data={view}
+        showMonthly={showMonthly}
+        currentWeek={currentWeek}
+      />
 
-      <BestWorst records={sortedDesc.slice(0, RANGE_SIZE[range])} showMonthly={showMonthly} />
+      <BestWorst
+        records={sortedDesc.slice(0, RANGE_SIZE[range])}
+        showMonthly={showMonthly}
+      />
     </div>
   );
 }
@@ -123,7 +132,9 @@ function RevenueChart({
 }) {
   if (data.length === 0) return null;
 
-  const values = data.map((r) => r.revenue + (showMonthly ? r.monthlyBossRevenue : 0));
+  const values = data.map(
+    (r) => r.revenue + (showMonthly ? r.monthlyBossRevenue : 0),
+  );
   const max = Math.max(1, ...values);
   const gridSteps = 4;
 
@@ -188,7 +199,9 @@ function RevenueChart({
                     y={bottomY - weeklyH}
                     width={barWidth}
                     height={weeklyH}
-                    className={"stats-bar weekly" + (isCurrent ? " current" : "")}
+                    className={
+                      "stats-bar weekly" + (isCurrent ? " current" : "")
+                    }
                     rx="2"
                   />
                 )}
@@ -198,7 +211,9 @@ function RevenueChart({
                     y={bottomY - weeklyH - monthlyH}
                     width={barWidth}
                     height={monthlyH}
-                    className={"stats-bar monthly" + (isCurrent ? " current" : "")}
+                    className={
+                      "stats-bar monthly" + (isCurrent ? " current" : "")
+                    }
                     rx="2"
                   />
                 )}
@@ -206,7 +221,11 @@ function RevenueChart({
                   {weekRangeLabel(r.week)}
                   {"\n"}주간 수익 {formatMeso(weekly)}
                   {monthly > 0 && `\n월간 보스 ${formatMeso(monthly)}`}
-                  {"\n결정 " + r.crystals + "개 · 캐릭터 " + r.characterCount + "개"}
+                  {"\n결정 " +
+                    r.crystals +
+                    "개 · 캐릭터 " +
+                    r.characterCount +
+                    "개"}
                 </title>
               </g>
             );

@@ -1,39 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 export type Route =
-  | { view: 'home' }
-  | { view: 'lookup' }
-  | { view: 'todo' }
-  | { view: 'stats' }
-  | { view: 'bosses' }
-  | { view: 'character'; name: string; tab?: string };
+  | { view: "home" }
+  | { view: "lookup" }
+  | { view: "todo" }
+  | { view: "stats" }
+  | { view: "potential" }
+  | { view: "character"; name: string; tab?: string };
 
 function parse(): Route {
   const hash = window.location.hash;
   const match = hash.match(/^#\/c\/([^?]+)(?:\?(.*))?$/);
   if (match) {
-    const query = new URLSearchParams(match[2] ?? '');
+    const query = new URLSearchParams(match[2] ?? "");
     return {
-      view: 'character',
+      view: "character",
       name: decodeURIComponent(match[1]),
-      tab: query.get('tab') ?? undefined,
+      tab: query.get("tab") ?? undefined,
     };
   }
-  if (hash.startsWith('#/lookup')) return { view: 'lookup' };
-  if (hash.startsWith('#/calc')) return { view: 'home' };
-  if (hash.startsWith('#/todo')) return { view: 'todo' };
-  if (hash.startsWith('#/stats')) return { view: 'stats' };
-  if (hash.startsWith('#/bosses')) return { view: 'bosses' };
+  if (hash.startsWith("#/lookup")) return { view: "lookup" };
+  if (hash.startsWith("#/calc")) return { view: "home" };
+  if (hash.startsWith("#/todo")) return { view: "todo" };
+  if (hash.startsWith("#/stats")) return { view: "stats" };
+  if (hash.startsWith("#/potential") || hash.startsWith("#/bosses"))
+    return { view: "potential" };
   // 기본 랜딩은 체크리스트
-  return { view: 'todo' };
+  return { view: "todo" };
 }
 
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(parse);
   useEffect(() => {
     const onChange = () => setRoute(parse());
-    window.addEventListener('hashchange', onChange);
-    return () => window.removeEventListener('hashchange', onChange);
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
   }, []);
   return route;
 }
@@ -43,21 +44,21 @@ export function gotoCharacter(name: string) {
 }
 
 export function gotoLookup() {
-  window.location.hash = '#/lookup';
+  window.location.hash = "#/lookup";
 }
 
 export function gotoTodo() {
-  window.location.hash = '#/todo';
+  window.location.hash = "#/todo";
 }
 
 export function gotoHome() {
-  window.location.hash = '#/calc';
+  window.location.hash = "#/calc";
 }
 
 export function gotoStats() {
-  window.location.hash = '#/stats';
+  window.location.hash = "#/stats";
 }
 
-export function gotoBosses() {
-  window.location.hash = '#/bosses';
+export function gotoPotential() {
+  window.location.hash = "#/potential";
 }

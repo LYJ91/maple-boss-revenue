@@ -101,4 +101,34 @@ describe("conflict merging", () => {
     );
     expect(merged[0].revenue).toBe(20);
   });
+
+  it("prefers finalized weekly records over newer live snapshots", () => {
+    const base = {
+      week: "2026-07-09",
+      revenue: 1,
+      crystals: 1,
+      monthlyBossRevenue: 0,
+      characterCount: 1,
+    };
+    const merged = mergeHistory(
+      [
+        {
+          ...base,
+          revenue: 10,
+          updatedAt: "2026-07-16T00:00:00.000Z",
+          finalized: true,
+        },
+      ],
+      [
+        {
+          ...base,
+          revenue: 99,
+          updatedAt: "2026-07-17T00:00:00.000Z",
+          finalized: false,
+        },
+      ],
+    );
+    expect(merged[0].revenue).toBe(10);
+    expect(merged[0].finalized).toBe(true);
+  });
 });

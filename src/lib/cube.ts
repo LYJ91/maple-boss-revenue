@@ -335,7 +335,7 @@ export function analyzeCubes(
   });
 }
 
-function analyzeOne(
+export function analyzeOne(
   item: CubeItemInput,
   profile: JobProfile,
   cube: CubeType,

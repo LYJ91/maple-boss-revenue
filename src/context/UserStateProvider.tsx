@@ -479,6 +479,13 @@ export function mergeTodoChecks(
   return { ...local, checks };
 }
 
+function historyRank(record: WeekRecord): number {
+  if (record.finalized && !record.unrecoverable) return 3;
+  if (record.finalized) return 2;
+  if (record.unrecoverable) return 1;
+  return 0;
+}
+
 export function mergeHistory(
   server: WeekRecord[],
   local: WeekRecord[],
@@ -486,8 +493,18 @@ export function mergeHistory(
   const records = new Map(server.map((record) => [record.week, record]));
   for (const record of local) {
     const current = records.get(record.week);
-    if (!current || record.updatedAt > current.updatedAt)
+    if (!current) {
       records.set(record.week, record);
+      continue;
+    }
+    const localRank = historyRank(record);
+    const currentRank = historyRank(current);
+    if (
+      localRank > currentRank ||
+      (localRank === currentRank && record.updatedAt > current.updatedAt)
+    ) {
+      records.set(record.week, record);
+    }
   }
   return [...records.values()]
     .sort((a, b) => b.week.localeCompare(a.week))

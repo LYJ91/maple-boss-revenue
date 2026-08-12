@@ -1,7 +1,7 @@
 /**
  * 주간 수익 기록.
- * 보스수익 탭에서 계산될 때마다 "이번 주(목요일 리셋 기준)" 기록을 갱신해 저장한다.
- * 주가 넘어가면 새 주차 키로 기록이 시작되고 지난 주 기록은 그대로 남는다.
+ * - 이번 주: 사이트 접속 시 실시간 스케줄러로 계속 갱신 (finalized=false)
+ * - 지난 주: API로 한 번 확정하면 finalized=true 로 잠그고 재조회하지 않음
  */
 
 import { weekKey } from "./week";
@@ -24,6 +24,13 @@ export interface WeekRecord {
   characterCount: number;
   /** 마지막 갱신 시각 (ISO) */
   updatedAt: string;
+  /**
+   * true면 API(또는 창 만료 시 마지막 스냅샷)로 확정된 지난 주.
+   * 이후 같은 주차는 스케줄러를 다시 호출하지 않는다.
+   */
+  finalized?: boolean;
+  /** 복구 창이 지나 데이터를 채우지 못한 주차 (통계에서는 제외) */
+  unrecoverable?: boolean;
 }
 
 export function loadHistory(): WeekRecord[] {
@@ -56,18 +63,51 @@ export function writeHistoryCache(records: WeekRecord[]): void {
   }
 }
 
-/** 이번 주 기록을 갱신(없으면 생성)하고 전체 기록을 최신순으로 반환한다 */
+function persist(records: WeekRecord[], changed: WeekRecord): WeekRecord[] {
+  const sorted = [...records]
+    .sort((a, b) => b.week.localeCompare(a.week))
+    .slice(0, MAX_WEEKS);
+  writeHistoryCache(sorted);
+  notifyHistory(changed);
+  return sorted;
+}
+
+/** 통계/표시용 — 복구 실패 더미는 제외 */
+export function visibleHistory(records: WeekRecord[]): WeekRecord[] {
+  return records.filter((r) => !r.unrecoverable);
+}
+
+/** 주차가 이미 API 확정(또는 복구 불가 처리)되었는지 */
+export function isWeekChecked(record: WeekRecord | undefined): boolean {
+  return Boolean(record?.finalized || record?.unrecoverable);
+}
+
+/** 임의 주차 기록을 갱신(없으면 생성)하고 전체 기록을 최신순으로 반환 */
+export function upsertWeekRecord(
+  data: WeekRecord,
+  existing: WeekRecord[] = loadHistory(),
+): WeekRecord[] {
+  const records = existing.filter((r) => r.week !== data.week);
+  records.unshift(data);
+  return persist(records, data);
+}
+
+/**
+ * 이번 주 기록을 갱신한다.
+ * 이미 finalized된 다른 주차는 건드리지 않으며, 이번 주는 항상 finalized=false.
+ */
 export function recordCurrentWeek(
-  data: Omit<WeekRecord, "week" | "updatedAt">,
+  data: Omit<WeekRecord, "week" | "updatedAt" | "finalized" | "unrecoverable">,
   now: Date = new Date(),
 ): WeekRecord[] {
   const week = weekKey("thu", now);
-  const records = loadHistory().filter((r) => r.week !== week);
-  records.unshift({ ...data, week, updatedAt: now.toISOString() });
-  records.sort((a, b) => b.week.localeCompare(a.week));
-  writeHistoryCache(records);
-  notifyHistory(records[0]);
-  return records;
+  return upsertWeekRecord({
+    ...data,
+    week,
+    updatedAt: now.toISOString(),
+    finalized: false,
+    unrecoverable: false,
+  });
 }
 
 /** 주차 키(목요일 날짜) → "M/D(목) ~ M/D(수)" 범위 라벨 */

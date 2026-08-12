@@ -16,9 +16,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         monthly_boss_revenue: string | number;
         character_count: number;
         updated_at: string;
+        finalized: boolean;
+        unrecoverable: boolean;
       }>(
         await db()`
-        SELECT week::text, revenue, crystals, monthly_boss_revenue, character_count, updated_at
+        SELECT week::text, revenue, crystals, monthly_boss_revenue, character_count,
+               updated_at, finalized, unrecoverable
         FROM weekly_history WHERE user_id=${user.subject} ORDER BY week DESC LIMIT 52
       `,
       );
@@ -30,6 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           monthlyBossRevenue: Number(r.monthly_boss_revenue),
           characterCount: Number(r.character_count),
           updatedAt: r.updated_at,
+          finalized: Boolean(r.finalized),
+          unrecoverable: Boolean(r.unrecoverable),
         })),
       });
     }
@@ -42,13 +47,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const r = parsed.data;
       await db()`
         INSERT INTO weekly_history
-          (user_id, week, revenue, crystals, monthly_boss_revenue, character_count, updated_at)
-        VALUES (${user.subject}, ${r.week}, ${r.revenue}, ${r.crystals}, ${r.monthlyBossRevenue}, ${r.characterCount}, ${r.updatedAt ?? new Date().toISOString()})
+          (user_id, week, revenue, crystals, monthly_boss_revenue, character_count,
+           updated_at, finalized, unrecoverable)
+        VALUES (
+          ${user.subject}, ${r.week}, ${r.revenue}, ${r.crystals},
+          ${r.monthlyBossRevenue}, ${r.characterCount},
+          ${r.updatedAt ?? new Date().toISOString()},
+          ${r.finalized}, ${r.unrecoverable}
+        )
         ON CONFLICT (user_id, week) DO UPDATE SET
           revenue=EXCLUDED.revenue, crystals=EXCLUDED.crystals,
           monthly_boss_revenue=EXCLUDED.monthly_boss_revenue,
-          character_count=EXCLUDED.character_count, updated_at=EXCLUDED.updated_at
+          character_count=EXCLUDED.character_count,
+          updated_at=EXCLUDED.updated_at,
+          finalized=EXCLUDED.finalized,
+          unrecoverable=EXCLUDED.unrecoverable
         WHERE weekly_history.updated_at <= EXCLUDED.updated_at
+          OR (EXCLUDED.finalized = true AND weekly_history.finalized = false)
       `;
       await db()`
         DELETE FROM weekly_history WHERE user_id=${user.subject} AND week NOT IN

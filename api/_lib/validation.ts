@@ -27,6 +27,8 @@ export const historyRecordSchema = z.object({
   monthlyBossRevenue: z.number().int().nonnegative(),
   characterCount: z.number().int().nonnegative(),
   updatedAt: z.string().datetime().optional(),
+  finalized: z.boolean().optional().default(false),
+  unrecoverable: z.boolean().optional().default(false),
 });
 
 export function bodyWithinLimit(body: unknown, maxBytes = 1_000_000): boolean {

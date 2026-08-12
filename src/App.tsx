@@ -13,7 +13,13 @@ import {
   type SchedulerState,
 } from "./lib/scheduler";
 import { todayISO } from "./lib/format";
-import { loadHistory, recordCurrentWeek, type WeekRecord } from "./lib/history";
+import {
+  loadHistory,
+  recordCurrentWeek,
+  visibleHistory,
+  type WeekRecord,
+} from "./lib/history";
+import { finalizePendingWeeks } from "./lib/weekFinalize";
 import { SummaryBar } from "./components/SummaryBar";
 import { RevenueHistory } from "./components/RevenueHistory";
 import { CharacterSidebar } from "./components/CharacterSidebar";
@@ -24,9 +30,9 @@ import { ImportModal } from "./components/ImportModal";
 import { CharacterPage } from "./pages/CharacterPage";
 import { TodoPage } from "./pages/TodoPage";
 import { StatsPage } from "./pages/StatsPage";
-import { BossesPage } from "./pages/BossesPage";
+import { PotentialPage } from "./pages/PotentialPage";
 import {
-  gotoBosses,
+  gotoPotential,
   gotoCharacter,
   gotoHome,
   gotoLookup,
@@ -65,12 +71,12 @@ function HeaderSearch() {
   );
 }
 
-type MainTab = "calc" | "equip" | "todo" | "stats" | "bosses";
+type MainTab = "calc" | "equip" | "todo" | "stats" | "potential";
 
 function activeTab(route: Route): MainTab {
   if (route.view === "todo") return "todo";
   if (route.view === "stats") return "stats";
-  if (route.view === "bosses") return "bosses";
+  if (route.view === "potential") return "potential";
   if (route.view === "character" || route.view === "lookup") return "equip";
   return "calc";
 }
@@ -81,7 +87,7 @@ function MainNav({ route }: { route: Route }) {
     { key: "todo", label: "체크리스트", go: gotoTodo },
     { key: "calc", label: "보스수익", go: gotoHome },
     { key: "stats", label: "수익 통계", go: gotoStats },
-    { key: "bosses", label: "보스 정보", go: gotoBosses },
+    { key: "potential", label: "장비잠재", go: gotoPotential },
     { key: "equip", label: "장비확인", go: gotoLookup },
   ];
   return (
@@ -149,9 +155,8 @@ export default function App() {
     saveState(state);
   }, [state]);
 
-  // 보스수익 탭 진입 시 체크리스트 캐릭터를 목록에 동기화 (ocid/이름 기준)
+  // 사이트 접속 시 체크리스트 캐릭터를 목록에 동기화 (ocid/이름 기준)
   useEffect(() => {
-    if (route.view !== "home") return;
     const todo = loadTodoState();
     setState((prev) => {
       let changed = false;
@@ -200,7 +205,7 @@ export default function App() {
         selectedId: prev.selectedId ?? all[0]?.id ?? null,
       };
     });
-  }, [route.view]);
+  }, []);
 
   const summary = useMemo(
     () => computeAccount(state.characters, BOSS_MAP, today),
@@ -227,7 +232,6 @@ export default function App() {
     .map((c) => `${c.id}:${c.meta?.ocid ?? ""}:${c.meta?.accountId ?? ""}`)
     .join("|");
   useEffect(() => {
-    if (route.view !== "home") return;
     const accounts = new Map(loadTodoState().accounts.map((a) => [a.id, a]));
     let cancelled = false;
 
@@ -269,7 +273,7 @@ export default function App() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.view, linkedKey]);
+  }, [linkedKey]);
 
   const selectedSchedule = selected ? schedules[selected.id] : undefined;
   const clearedBossKeys = useMemo(
@@ -279,7 +283,7 @@ export default function App() {
 
   // 이번 주 수익 기록 갱신 (캐릭터가 하나도 없을 땐 기존 기록을 덮지 않는다)
   useEffect(() => {
-    if (route.view !== "home" || state.characters.length === 0) return;
+    if (state.characters.length === 0) return;
     setHistory(
       recordCurrentWeek({
         revenue: summary.weeklyRevenue,
@@ -288,7 +292,23 @@ export default function App() {
         characterCount: state.characters.length,
       }),
     );
-  }, [route.view, summary, state.characters.length]);
+  }, [summary, state.characters.length]);
+
+  // 미확정 지난 주는 스케줄러 과거 조회로 한 번만 확정한다
+  useEffect(() => {
+    if (state.characters.length === 0) return;
+    let cancelled = false;
+    void finalizePendingWeeks(state.characters).then((result) => {
+      if (!cancelled && result.finalizedWeeks.length > 0) {
+        setHistory(result.records);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // linkedKey 변경 시에만 (캐릭터/연동 구성이 바뀔 때)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedKey]);
 
   const addCharacter = () => {
     setState((prev) => {
@@ -310,16 +330,14 @@ export default function App() {
   ) => {
     setState((prev) => {
       const room = RULES.maxCharacters - prev.characters.length;
-      const toAdd = list
-        .slice(0, room)
-        .map(
-          ({ name, meta }): Character => ({
-            id: newId(),
-            name,
-            entries: [],
-            meta,
-          }),
-        );
+      const toAdd = list.slice(0, room).map(
+        ({ name, meta }): Character => ({
+          id: newId(),
+          name,
+          entries: [],
+          meta,
+        }),
+      );
       if (toAdd.length === 0) return prev;
       return {
         characters: [...prev.characters, ...toAdd],
@@ -503,9 +521,9 @@ export default function App() {
       ) : route.view === "todo" ? (
         <TodoPage />
       ) : route.view === "stats" ? (
-        <StatsPage records={history} />
-      ) : route.view === "bosses" ? (
-        <BossesPage characters={state.characters} />
+        <StatsPage records={visibleHistory(history)} />
+      ) : route.view === "potential" ? (
+        <PotentialPage characters={state.characters} />
       ) : (
         <>
           <SummaryBar summary={summary} accountLabels={accountLabels} />
@@ -549,7 +567,7 @@ export default function App() {
             </section>
           </main>
 
-          <RevenueHistory records={history} />
+          <RevenueHistory records={visibleHistory(history)} />
 
           <footer className="app-footer">
             <h3>계산 기준</h3>

@@ -65,9 +65,12 @@ const inflight = new Map<string, Promise<SchedulerState>>();
 export async function fetchScheduler(
   ocid: string,
   accountId: string,
-  options?: { force?: boolean },
+  options?: { force?: boolean; date?: string },
 ): Promise<SchedulerState> {
-  const cacheKey = `${accountId}:${ocid}`;
+  const date = options?.date;
+  const cacheKey = date
+    ? `${accountId}:${ocid}:${date}`
+    : `${accountId}:${ocid}`;
   if (!options?.force) {
     const entry = readCache()[cacheKey];
     if (entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS)
@@ -76,9 +79,9 @@ export async function fetchScheduler(
     if (pending) return pending;
   }
 
-  const promise = authRequest<SchedulerState>(
-    `/api/scheduler?ocid=${encodeURIComponent(ocid)}&accountId=${encodeURIComponent(accountId)}`,
-  )
+  const params = new URLSearchParams({ ocid, accountId });
+  if (date) params.set("date", date);
+  const promise = authRequest<SchedulerState>(`/api/scheduler?${params}`)
     .then((state) => {
       const cache = readCache();
       cache[cacheKey] = { fetchedAt: Date.now(), state };

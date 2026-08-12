@@ -46,13 +46,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "올바른 ocid가 필요합니다." });
     if (!accountId)
       return res.status(400).json({ error: "계정 ID가 필요합니다." });
+    const date =
+      typeof req.query.date === "string" ? req.query.date.trim() : "";
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      return res.status(400).json({ error: "올바른 날짜가 필요합니다." });
     const userKey = await getNexonKey(user.subject, accountId);
     if (!userKey)
       return res.status(404).json({ error: "연결된 계정을 찾을 수 없습니다." });
-    const nexonRes = await fetch(
-      `${NEXON_BASE}/scheduler/character-state?ocid=${encodeURIComponent(ocid)}`,
-      { headers: { "x-nxopen-api-key": userKey } },
-    );
+    const nexonUrl = new URL(`${NEXON_BASE}/scheduler/character-state`);
+    nexonUrl.searchParams.set("ocid", ocid);
+    // 실시간은 date 없이, 과거 주차 확정만 date를 붙인다 (오늘 날짜는 넥슨이 400)
+    if (date) nexonUrl.searchParams.set("date", date);
+    const nexonRes = await fetch(nexonUrl, {
+      headers: { "x-nxopen-api-key": userKey },
+    });
     if (!nexonRes.ok)
       return res
         .status(nexonRes.status)
