@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { BossEntry, Character, CharacterMeta, Difficulty } from "./types";
-import { BOSS_MAP, DATA_SOURCE, RULES } from "./data/crystalData";
+import {
+  BOSS_MAP,
+  clampPartySize,
+  DATA_SOURCE,
+  RULES,
+} from "./data/crystalData";
 import type { BossPreset } from "./data/presets";
 import { computeAccount } from "./lib/calc";
 import { loadState, saveState, type AppState } from "./lib/storage";
@@ -420,10 +425,15 @@ export default function App() {
         // 같은 난이도를 다시 누르면 해제 (파티 인원 선호는 유지)
         return { ...c, entries: c.entries.filter((e) => e.bossId !== bossId) };
       }
+      const boss = BOSS_MAP.get(bossId);
+      const requestedPartySize =
+        c.partyPrefs?.[bossId] ?? existing?.partySize ?? 1;
       const entry: BossEntry = {
         bossId,
         difficulty,
-        partySize: c.partyPrefs?.[bossId] ?? existing?.partySize ?? 1,
+        partySize: boss
+          ? clampPartySize(boss, difficulty, requestedPartySize)
+          : 1,
         clearsPerWeek: existing?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
       };
       const entries = existing
@@ -442,10 +452,15 @@ export default function App() {
       const weekly: BossEntry[] = preset.entries.map(
         ({ bossId, difficulty }) => {
           const prev = c.entries.find((e) => e.bossId === bossId);
+          const boss = BOSS_MAP.get(bossId);
+          const requestedPartySize =
+            c.partyPrefs?.[bossId] ?? prev?.partySize ?? 1;
           return {
             bossId,
             difficulty,
-            partySize: c.partyPrefs?.[bossId] ?? prev?.partySize ?? 1,
+            partySize: boss
+              ? clampPartySize(boss, difficulty, requestedPartySize)
+              : 1,
             clearsPerWeek: prev?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
           };
         },
@@ -456,15 +471,31 @@ export default function App() {
 
   const updateEntry = (bossId: string, patch: Partial<BossEntry>) => {
     updateSelected((c) => {
-      const entries = c.entries.map((e) =>
-        e.bossId === bossId ? { ...e, ...patch } : e,
-      );
+      const entries = c.entries.map((e) => {
+        if (e.bossId !== bossId) return e;
+        const next = { ...e, ...patch };
+        const boss = BOSS_MAP.get(bossId);
+        return boss
+          ? {
+              ...next,
+              partySize: clampPartySize(
+                boss,
+                next.difficulty,
+                next.partySize,
+              ),
+            }
+          : next;
+      });
       // 파티 인원 변경은 주차 리셋과 무관하게 선호로 별도 저장한다
       if (patch.partySize != null) {
+        const nextEntry = entries.find((e) => e.bossId === bossId);
         return {
           ...c,
           entries,
-          partyPrefs: { ...c.partyPrefs, [bossId]: patch.partySize },
+          partyPrefs: {
+            ...c.partyPrefs,
+            [bossId]: nextEntry?.partySize ?? patch.partySize,
+          },
         };
       }
       return { ...c, entries };

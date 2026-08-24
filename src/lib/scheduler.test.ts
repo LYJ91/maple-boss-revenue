@@ -30,6 +30,7 @@ describe('completedBossKeys', () => {
           { name: '블러디퀸', difficulty: 'chaos', cycle: 'bossWeekly', complete: true },
           { name: '스우', difficulty: 'hard', cycle: 'bossWeekly', complete: true },
           { name: '검은 마법사', difficulty: 'extreme', cycle: 'bossMonthly', complete: true },
+          { name: '벨로나', difficulty: 'normal', cycle: 'bossWeekly', complete: true },
           { name: '스우', difficulty: 'extreme', cycle: 'bossWeekly', complete: false },
         ],
       }),
@@ -37,6 +38,7 @@ describe('completedBossKeys', () => {
     expect(keys).toContain('bloody-queen-weekly:chaos');
     expect(keys).toContain('lotus:hard');
     expect(keys).toContain('black-mage:extreme');
+    expect(keys).toContain('bellona:normal');
     expect(keys).not.toContain('lotus:extreme');
   });
 
@@ -106,6 +108,23 @@ describe('entriesFromSchedule', () => {
       partySize: 3,
       clearsPerWeek: 7,
     });
+  });
+
+  it('벨로나의 가장 높은 완료 난이도를 선택하고 파티 선호를 3인으로 제한한다', () => {
+    const bellonaState = makeState({
+      bosses: [
+        { name: '벨로나', difficulty: 'easy', cycle: 'bossWeekly', complete: true },
+        { name: '벨로나', difficulty: 'hard', cycle: 'bossWeekly', complete: true },
+      ],
+    });
+    expect(entriesFromSchedule([], bellonaState, { bellona: 6 })).toEqual([
+      {
+        bossId: 'bellona',
+        difficulty: 'hard',
+        partySize: 3,
+        clearsPerWeek: 7,
+      },
+    ]);
   });
 
   it('entriesEqual은 순서와 무관하게 동일 설정을 판별한다', () => {

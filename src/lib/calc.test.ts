@@ -23,6 +23,28 @@ describe('priceAt', () => {
     const hard = kaling.variants.find((v) => v.difficulty === 'hard')!;
     expect(priceAt(hard, TODAY)).toBe(1_739_000_000);
   });
+
+  it('벨로나 출시 가격이 난이도별로 적용된다', () => {
+    const bellona = BOSS_MAP.get('bellona')!;
+    expect(
+      priceAt(
+        bellona.variants.find((v) => v.difficulty === 'easy')!,
+        '2026-08-24',
+      ),
+    ).toBe(440_000_000);
+    expect(
+      priceAt(
+        bellona.variants.find((v) => v.difficulty === 'normal')!,
+        '2026-08-24',
+      ),
+    ).toBe(850_000_000);
+    expect(
+      priceAt(
+        bellona.variants.find((v) => v.difficulty === 'hard')!,
+        '2026-08-24',
+      ),
+    ).toBe(2_950_000_000);
+  });
 });
 
 describe('crystalValue', () => {
@@ -42,6 +64,27 @@ describe('computeAccount', () => {
     expect(s.weeklyRevenue).toBe(51_500_000);
     expect(s.weeklyCrystalCount).toBe(1);
     expect(s.monthlyRevenue).toBe(51_500_000 * RULES.weeksPerMonth);
+  });
+
+  it('저장된 파티 인원이 난이도 상한을 넘으면 실제 상한으로 계산한다', () => {
+    const c = makeCharacter('a', [
+      {
+        bossId: 'bellona',
+        difficulty: 'hard',
+        partySize: 6,
+        clearsPerWeek: 7,
+      },
+      {
+        bossId: 'lotus',
+        difficulty: 'extreme',
+        partySize: 6,
+        clearsPerWeek: 7,
+      },
+    ]);
+    const s = computeAccount([c], BOSS_MAP, '2026-08-24');
+    expect(s.weeklyRevenue).toBe(
+      Math.floor(2_950_000_000 / 3) + Math.floor(574_000_000 / 2),
+    );
   });
 
   it('주간 보스는 캐릭터당 12개까지만 집계된다 (가격 높은 순)', () => {

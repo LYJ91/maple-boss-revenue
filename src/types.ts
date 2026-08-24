@@ -11,6 +11,8 @@ export interface PricePoint {
 
 export interface BossVariant {
   difficulty: Difficulty;
+  /** 난이도별 최대 파티 인원. 없으면 Boss.maxPartySize를 사용한다. */
+  maxPartySize?: number;
   /** since 오름차순. 조회 시점 이하 중 가장 최신 가격이 적용된다. */
   prices: PricePoint[];
 }

@@ -1,5 +1,5 @@
 import type { Boss, BossEntry, BossVariant, Character } from '../types';
-import { RULES } from '../data/crystalData';
+import { clampPartySize, RULES } from '../data/crystalData';
 
 /** 조회 시점(dateISO) 기준으로 적용 중인 결정석 가격을 반환 */
 export function priceAt(variant: BossVariant, dateISO: string): number {
@@ -82,7 +82,8 @@ function resolveEntry(
   const variant = boss.variants.find((v) => v.difficulty === entry.difficulty);
   if (!variant) return null;
   const price = priceAt(variant, dateISO);
-  return { boss, value: crystalValue(price, entry.partySize) };
+  const partySize = clampPartySize(boss, entry.difficulty, entry.partySize);
+  return { boss, value: crystalValue(price, partySize) };
 }
 
 interface CapGroup {

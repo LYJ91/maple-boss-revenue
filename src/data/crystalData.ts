@@ -7,15 +7,18 @@ import type { Boss, Difficulty, ResetType } from '../types';
  *   https://maplestory.nexon.com/news/update/806
  *   - 검은 마법사의 변경 가격은 2026-07-01부터 적용 (공지 명시) → prices의 since로 처리
  *   - 같은 공지의 보스 개편: 이지 시그너스 삭제, 하드 힐라 / 카오스 핑크빈 / 노멀 시그너스가 일간 보스로 전환
+ * 신규 보스 벨로나: 메이플스토리 2026-08-20 업데이트 공지
+ *   https://maplestory.nexon.com/news/update/811
+ *   - 결정 가격은 게임 내 NPC 콜렉터 기준으로 2026-08-24 확인
  * 6/18 공지에 없는(=변동 없는) 가격은 직전 조정(2025-10-23) 이후 유지 중인 가격이다.
  *
  * 가격 갱신 방법은 README.md의 "가격 데이터 갱신" 절 참고.
  */
 export const DATA_SOURCE = {
-  label: '메이플스토리 공식 업데이트 공지 (2026-06-18 적용)',
-  url: 'https://maplestory.nexon.com/news/update/806',
+  label: '메이플스토리 공식 업데이트 공지 (2026-08-20 벨로나 반영)',
+  url: 'https://maplestory.nexon.com/news/update/811',
   /** 이 데이터가 공식 공지와 대조 확인된 날짜 */
-  verifiedAt: '2026-07-06',
+  verifiedAt: '2026-08-24',
 } as const;
 
 /** 게임 규칙 상수 */
@@ -50,6 +53,8 @@ export const RESET_LABEL: Record<ResetType, string> = {
 const PREV = '2025-10-23';
 /** 2026-06-18 공지 적용일 */
 const P618 = '2026-06-18';
+/** 신규 보스 벨로나 출시일 */
+const P820 = '2026-08-20';
 
 const p = (price: number, since: string) => ({ price, since });
 
@@ -116,7 +121,11 @@ export const BOSSES: Boss[] = [
     variants: [
       { difficulty: 'normal', prices: [p(16_700_000, P618)] },
       { difficulty: 'hard', prices: [p(51_500_000, P618)] },
-      { difficulty: 'extreme', prices: [p(574_000_000, P618)] },
+      {
+        difficulty: 'extreme',
+        maxPartySize: 2,
+        prices: [p(574_000_000, P618)],
+      },
     ],
   },
   {
@@ -218,7 +227,7 @@ export const BOSSES: Boss[] = [
     id: 'adversary',
     name: '최초의 대적자',
     reset: 'weekly',
-    maxPartySize: 6,
+    maxPartySize: 3,
     variants: [
       { difficulty: 'easy', prices: [p(308_000_000, P618)] },
       { difficulty: 'normal', prices: [p(560_000_000, P618)] },
@@ -239,10 +248,22 @@ export const BOSSES: Boss[] = [
     ],
   },
   {
+    id: 'bellona',
+    name: '벨로나',
+    reset: 'weekly',
+    maxPartySize: 3,
+    // variants는 가격 오름차순 유지 (스케줄러가 마지막 완료 난이도를 선택)
+    variants: [
+      { difficulty: 'easy', prices: [p(440_000_000, P820)] },
+      { difficulty: 'normal', prices: [p(850_000_000, P820)] },
+      { difficulty: 'hard', prices: [p(2_950_000_000, P820)] },
+    ],
+  },
+  {
     id: 'brilliant-star',
     name: '찬란한 흉성',
     reset: 'weekly',
-    maxPartySize: 6,
+    maxPartySize: 3,
     variants: [
       { difficulty: 'normal', prices: [p(625_000_000, P618)] },
       { difficulty: 'hard', prices: [p(2_678_000_000, P618)] },
@@ -252,7 +273,7 @@ export const BOSSES: Boss[] = [
     id: 'limbo',
     name: '림보',
     reset: 'weekly',
-    maxPartySize: 6,
+    maxPartySize: 3,
     variants: [
       { difficulty: 'normal', prices: [p(1_026_000_000, P618)] },
       { difficulty: 'hard', prices: [p(2_385_000_000, P618)] },
@@ -262,7 +283,7 @@ export const BOSSES: Boss[] = [
     id: 'baldrix',
     name: '발드릭스',
     reset: 'weekly',
-    maxPartySize: 6,
+    maxPartySize: 3,
     variants: [
       { difficulty: 'normal', prices: [p(1_368_000_000, P618)] },
       { difficulty: 'hard', prices: [p(3_078_000_000, P618)] },
@@ -272,7 +293,7 @@ export const BOSSES: Boss[] = [
     id: 'jupiter',
     name: '유피테르',
     reset: 'weekly',
-    maxPartySize: 6,
+    maxPartySize: 3,
     variants: [
       { difficulty: 'normal', prices: [p(1_615_000_000, P618)] },
       { difficulty: 'hard', prices: [p(4_845_000_000, P618)] },
@@ -300,3 +321,23 @@ export const BOSSES: Boss[] = [
 ];
 
 export const BOSS_MAP: ReadonlyMap<string, Boss> = new Map(BOSSES.map((b) => [b.id, b]));
+
+/** 해당 난이도의 실제 최대 파티 인원 */
+export function maxPartySizeFor(
+  boss: Boss,
+  difficulty: Difficulty,
+): number {
+  const variant = boss.variants.find((v) => v.difficulty === difficulty);
+  const configured = variant?.maxPartySize ?? boss.maxPartySize;
+  return Math.max(1, Math.min(RULES.maxPartySize, Math.trunc(configured)));
+}
+
+/** 저장값/선호값을 해당 난이도의 실제 파티 범위로 보정 */
+export function clampPartySize(
+  boss: Boss,
+  difficulty: Difficulty,
+  requested: number,
+): number {
+  const normalized = Number.isFinite(requested) ? Math.trunc(requested) : 1;
+  return Math.max(1, Math.min(maxPartySizeFor(boss, difficulty), normalized));
+}

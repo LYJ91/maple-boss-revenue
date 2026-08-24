@@ -1,5 +1,12 @@
 import type { Boss, BossEntry, Character, Difficulty, ResetType } from '../types';
-import { BOSSES, BOSS_MAP, DIFFICULTY_LABEL, RULES } from '../data/crystalData';
+import {
+  BOSSES,
+  BOSS_MAP,
+  clampPartySize,
+  DIFFICULTY_LABEL,
+  maxPartySizeFor,
+  RULES,
+} from '../data/crystalData';
 import { BOSS_PRESETS, type BossPreset } from '../data/presets';
 import type { CharacterSummary } from '../lib/calc';
 import { crystalValue, priceAt } from '../lib/calc';
@@ -189,8 +196,15 @@ function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: Ro
   const variant = entry
     ? boss.variants.find((v) => v.difficulty === entry.difficulty)
     : undefined;
+  const partyLimit = variant
+    ? maxPartySizeFor(boss, variant.difficulty)
+    : boss.maxPartySize;
+  const partySize =
+    entry && variant
+      ? clampPartySize(boss, variant.difficulty, entry.partySize)
+      : 1;
   const value =
-    entry && variant ? crystalValue(priceAt(variant, today), entry.partySize) : 0;
+    entry && variant ? crystalValue(priceAt(variant, today), partySize) : 0;
   const rowCleared =
     clearedBossKeys != null &&
     boss.variants.some((v) => clearedBossKeys.has(bossKey(boss.id, v.difficulty)));
@@ -237,10 +251,10 @@ function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: Ro
           <label className="control">
             파티
             <select
-              value={entry.partySize}
+              value={partySize}
               onChange={(e) => onUpdate(boss.id, { partySize: Number(e.target.value) })}
             >
-              {Array.from({ length: boss.maxPartySize }, (_, i) => i + 1).map((n) => (
+              {Array.from({ length: partyLimit }, (_, i) => i + 1).map((n) => (
                 <option key={n} value={n}>
                   {n}인
                 </option>

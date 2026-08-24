@@ -5,7 +5,7 @@
  */
 
 import type { BossEntry, Difficulty } from "../types";
-import { BOSSES, RULES } from "../data/crystalData";
+import { BOSSES, clampPartySize, RULES } from "../data/crystalData";
 import { authRequest } from "./sync";
 
 export interface SchedulerBoss {
@@ -155,10 +155,11 @@ export function entriesFromSchedule(
     if (!matched) continue;
     const prev = prevByBoss.get(boss.id);
     const preferred = partyPrefs[boss.id];
+    const requestedPartySize = preferred ?? prev?.partySize ?? 1;
     auto.push({
       bossId: boss.id,
       difficulty: matched,
-      partySize: preferred ?? prev?.partySize ?? 1,
+      partySize: clampPartySize(boss, matched, requestedPartySize),
       clearsPerWeek: prev?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
     });
   }
