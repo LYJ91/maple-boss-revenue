@@ -5,7 +5,12 @@
  */
 
 import type { BossEntry, Difficulty } from "../types";
-import { BOSSES, clampPartySize, RULES } from "../data/crystalData";
+import {
+  BOSSES,
+  BOSS_MAP,
+  clampPartySize,
+  RULES,
+} from "../data/crystalData";
 import { authRequest } from "./sync";
 
 export interface SchedulerBoss {
@@ -31,9 +36,60 @@ export interface SchedulerState {
   contents: SchedulerContent[];
 }
 
+export const SCHEDULER_STATE_EVENT = "maple:scheduler-state";
+
+export interface SchedulerStateEventDetail {
+  ocid: string;
+  accountId: string;
+  state: SchedulerState;
+}
+
+export interface SchedulerReliability {
+  /** 주간 보스 행이 있어 전체 보스 응답으로 신뢰할 수 있음 */
+  weeklyBosses: boolean;
+  /** 월간 완료=true가 있거나, 전체 응답에서 월간 미완료를 확인할 수 있음 */
+  monthlyBosses: boolean;
+  /** 미접속 캐릭터에서 관측되는 월간 보스 2행뿐인 축약 응답 */
+  truncated: boolean;
+}
+
+/**
+ * 넥슨 스케줄러가 미접속 캐릭터에 월간 보스 미완료 2행만 주는 경우를 감지한다.
+ * 이런 응답을 완료 상태의 근거로 쓰면 기존 주간/월간 기록이 모두 사라진다.
+ */
+export function schedulerReliability(
+  state: SchedulerState,
+): SchedulerReliability {
+  const weeklyBosses = state.bosses.some((b) => b.cycle === "bossWeekly");
+  const hasMonthlyBosses = state.bosses.some(
+    (b) => b.cycle === "bossMonthly",
+  );
+  const hasCompletedMonthlyBoss = state.bosses.some(
+    (b) => b.cycle === "bossMonthly" && b.complete,
+  );
+  return {
+    weeklyBosses,
+    // 축약 응답의 false는 신뢰하지 않지만 true는 완료의 직접 증거로 사용한다.
+    monthlyBosses:
+      hasCompletedMonthlyBoss || (weeklyBosses && hasMonthlyBosses),
+    truncated: state.bosses.length > 0 && !weeklyBosses && hasMonthlyBosses,
+  };
+}
+
+function publishSchedulerState(detail: SchedulerStateEventDetail): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent<SchedulerStateEventDetail>(SCHEDULER_STATE_EVENT, {
+        detail,
+      }),
+    );
+  }
+}
+
 /* ───── 조회 + 캐시 ───── */
 
-const CACHE_KEY = "maple-boss-revenue:scheduler-cache:v1";
+// v2: 축약 응답을 정상 캐시로 저장하던 v1을 폐기한다.
+const CACHE_KEY = "maple-boss-revenue:scheduler-cache:v2";
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface CacheEntry {
@@ -73,8 +129,12 @@ export async function fetchScheduler(
     : `${accountId}:${ocid}`;
   if (!options?.force) {
     const entry = readCache()[cacheKey];
-    if (entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS)
+    if (entry && Date.now() - entry.fetchedAt < CACHE_TTL_MS) {
+      if (!date) {
+        publishSchedulerState({ ocid, accountId, state: entry.state });
+      }
       return entry.state;
+    }
     const pending = inflight.get(cacheKey);
     if (pending) return pending;
   }
@@ -83,9 +143,15 @@ export async function fetchScheduler(
   if (date) params.set("date", date);
   const promise = authRequest<SchedulerState>(`/api/scheduler?${params}`)
     .then((state) => {
-      const cache = readCache();
-      cache[cacheKey] = { fetchedAt: Date.now(), state };
-      writeCache(cache);
+      // 축약 응답은 상태 전파는 하되 정상 캐시를 덮어쓰지 않는다.
+      if (schedulerReliability(state).weeklyBosses) {
+        const cache = readCache();
+        cache[cacheKey] = { fetchedAt: Date.now(), state };
+        writeCache(cache);
+      }
+      if (!date) {
+        publishSchedulerState({ ocid, accountId, state });
+      }
       return state;
     })
     .finally(() => inflight.delete(cacheKey));
@@ -163,7 +229,20 @@ export function entriesFromSchedule(
       clearsPerWeek: prev?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
     });
   }
-  return auto;
+  const reliability = schedulerReliability(state);
+  const byReset = (entries: BossEntry[], reset: "weekly" | "monthly") =>
+    entries.filter((entry) => BOSS_MAP.get(entry.bossId)?.reset === reset);
+
+  // 신뢰할 수 없는 구간은 기존 상태를 보존한다. 특히 월간 2행 축약 응답의
+  // complete=false로 검은 마법사 완료 기록을 지우지 않는다.
+  return [
+    ...(reliability.weeklyBosses
+      ? byReset(auto, "weekly")
+      : byReset(current, "weekly")),
+    ...(reliability.monthlyBosses
+      ? byReset(auto, "monthly")
+      : byReset(current, "monthly")),
+  ];
 }
 
 /** 두 entries가 순서와 무관하게 같은 설정인지 */
@@ -185,6 +264,8 @@ export interface AutoProgress {
   done: number;
   total: number;
   complete: boolean;
+  /** 축약 응답이라 완료/미완료를 확정할 수 없음 */
+  checking?: boolean;
 }
 
 /**
@@ -195,6 +276,9 @@ export interface AutoProgress {
  */
 export function weeklyBossProgress(state: SchedulerState): AutoProgress {
   const total = state.weeklyBossClearLimit || WEEKLY_BOSS_DEFAULT_LIMIT;
+  if (!schedulerReliability(state).weeklyBosses) {
+    return { done: 0, total, complete: false, checking: true };
+  }
   const clearedNames = new Set(
     state.bosses
       .filter((b) => b.cycle !== "bossMonthly" && b.complete)

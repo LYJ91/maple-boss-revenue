@@ -6,6 +6,7 @@ import {
   entriesEqual,
   entriesFromSchedule,
   epicDungeonProgress,
+  schedulerReliability,
   weeklyBossProgress,
   type SchedulerState,
 } from './scheduler';
@@ -127,6 +128,76 @@ describe('entriesFromSchedule', () => {
     ]);
   });
 
+  it('월간 보스 미완료 2행뿐인 축약 응답은 기존 완료 기록을 지우지 않는다', () => {
+    const current: BossEntry[] = [
+      { bossId: 'lotus', difficulty: 'hard', partySize: 2, clearsPerWeek: 7 },
+      { bossId: 'black-mage', difficulty: 'hard', partySize: 3, clearsPerWeek: 7 },
+    ];
+    const truncated = makeState({
+      bosses: [
+        {
+          name: '검은 마법사',
+          difficulty: 'hard',
+          cycle: 'bossMonthly',
+          complete: false,
+        },
+        {
+          name: '검은 마법사',
+          difficulty: 'extreme',
+          cycle: 'bossMonthly',
+          complete: false,
+        },
+      ],
+    });
+    expect(schedulerReliability(truncated)).toEqual({
+      weeklyBosses: false,
+      monthlyBosses: false,
+      truncated: true,
+    });
+    expect(entriesFromSchedule(current, truncated)).toEqual(current);
+  });
+
+  it('축약 응답이어도 월간 완료=true는 직접 증거로 반영한다', () => {
+    const positive = makeState({
+      bosses: [
+        {
+          name: '검은 마법사',
+          difficulty: 'hard',
+          cycle: 'bossMonthly',
+          complete: true,
+        },
+      ],
+    });
+    expect(schedulerReliability(positive).monthlyBosses).toBe(true);
+    expect(entriesFromSchedule([], positive)).toEqual([
+      {
+        bossId: 'black-mage',
+        difficulty: 'hard',
+        partySize: 1,
+        clearsPerWeek: 7,
+      },
+    ]);
+  });
+
+  it('전체 응답의 월간 미완료는 기존 월간 entry를 제거한다', () => {
+    const current: BossEntry[] = [
+      { bossId: 'black-mage', difficulty: 'hard', partySize: 2, clearsPerWeek: 7 },
+    ];
+    const full = makeState({
+      bosses: [
+        { name: '스우', difficulty: 'hard', cycle: 'bossWeekly', complete: false },
+        {
+          name: '검은 마법사',
+          difficulty: 'hard',
+          cycle: 'bossMonthly',
+          complete: false,
+        },
+      ],
+    });
+    expect(schedulerReliability(full).monthlyBosses).toBe(true);
+    expect(entriesFromSchedule(current, full)).toEqual([]);
+  });
+
   it('entriesEqual은 순서와 무관하게 동일 설정을 판별한다', () => {
     const a: BossEntry[] = [
       { bossId: 'lotus', difficulty: 'hard', partySize: 1, clearsPerWeek: 7 },
@@ -176,6 +247,27 @@ describe('weeklyBossProgress', () => {
       makeState({ weeklyBossClearCount: 0, weeklyBossClearLimit: 0 }),
     );
     expect(p.total).toBe(12);
+  });
+
+  it('주간 보스 행이 없는 축약 응답은 0/12가 아니라 확인 중으로 표시한다', () => {
+    const p = weeklyBossProgress(
+      makeState({
+        bosses: [
+          {
+            name: '검은 마법사',
+            difficulty: 'hard',
+            cycle: 'bossMonthly',
+            complete: false,
+          },
+        ],
+      }),
+    );
+    expect(p).toEqual({
+      done: 0,
+      total: 12,
+      complete: false,
+      checking: true,
+    });
   });
 });
 

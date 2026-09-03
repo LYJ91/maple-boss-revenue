@@ -205,6 +205,9 @@ describe('computeAccount', () => {
     const s = computeAccount([c], BOSS_MAP, TODAY);
     expect(s.weeklyRevenue).toBe(51_500_000);
     expect(s.monthlyBossRevenue).toBe(Math.floor(665_000_000 / 2));
+    expect(s.monthlyBossSelected).toBe(1);
+    expect(s.monthlyBossTotal).toBe(1);
+    expect(s.characters[0].monthlyBossSelected).toBe(1);
     expect(s.monthlyRevenue).toBe(
       51_500_000 * RULES.weeksPerMonth + Math.floor(665_000_000 / 2),
     );

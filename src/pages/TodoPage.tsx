@@ -456,7 +456,12 @@ function TodoRow({
   autoProgress(
     item: TodoItem,
     c: TodoCharacter,
-  ): { done: number; total: number; complete: boolean } | null;
+  ): {
+    done: number;
+    total: number;
+    complete: boolean;
+    checking?: boolean;
+  } | null;
   onToggle(item: TodoItem, c: TodoCharacter): void;
   onRemove(): void;
 }) {
@@ -490,17 +495,27 @@ function TodoRow({
           return (
             <div
               key={c.id}
-              className={"todo-cell auto" + (auto.complete ? " done" : "")}
-              title={`${c.name} · ${item.label} — API 자동 (${auto.done}/${auto.total})`}
+              className={
+                "todo-cell auto" +
+                (auto.complete ? " done" : "") +
+                (auto.checking ? " checking" : "")
+              }
+              title={
+                auto.checking
+                  ? `${c.name} · ${item.label} — API 확인 중`
+                  : `${c.name} · ${item.label} — API 자동 (${auto.done}/${auto.total})`
+              }
             >
               <span className="todo-check-circle">
-                {auto.complete ? "✓" : ""}
+                {auto.checking ? "?" : auto.complete ? "✓" : ""}
               </span>
-              {auto.total > 1 && (
+              {auto.checking ? (
+                <span className="todo-count">확인 중</span>
+              ) : auto.total > 1 ? (
                 <span className="todo-count">
                   {auto.done}/{auto.total}
                 </span>
-              )}
+              ) : null}
             </div>
           );
         }

@@ -6,6 +6,10 @@
 import type { WeekRecord } from "./history";
 import { weekRangeLabel } from "./history";
 import { formatMeso } from "./format";
+import {
+  attributedWeekRevenue,
+  monthlyBossDeltaByWeek,
+} from "./monthlyAttribution";
 
 export interface StatMetric {
   /** 카드 상단 라벨 */
@@ -26,14 +30,15 @@ export interface StatMetric {
  * - 최고 주 (전체 기록)
  *
  * @param sortedDesc 최신 주가 앞에 오도록 정렬된 WeekRecord 배열
- * @param includeMonthly 월간 보스 수익을 주간 값에 더할지 여부
+ * @param includeMonthly 월별 증가분으로 환산한 월간 보스 수익을 더할지 여부
  */
 export function computeStatMetrics(
   sortedDesc: WeekRecord[],
   includeMonthly: boolean,
 ): StatMetric[] {
+  const monthlyDelta = monthlyBossDeltaByWeek(sortedDesc);
   const value = (r: WeekRecord) =>
-    r.revenue + (includeMonthly ? r.monthlyBossRevenue : 0);
+    attributedWeekRevenue(r, monthlyDelta, includeMonthly);
 
   const last4 = sortedDesc.slice(0, 4);
   const prev4 = sortedDesc.slice(4, 8);

@@ -15,6 +15,9 @@ import {
   entriesEqual,
   entriesFromSchedule,
   fetchScheduler,
+  schedulerReliability,
+  SCHEDULER_STATE_EVENT,
+  type SchedulerStateEventDetail,
   type SchedulerState,
 } from "./lib/scheduler";
 import { todayISO } from "./lib/format";
@@ -149,12 +152,12 @@ export default function App() {
   const [showPrices, setShowPrices] = useState(false);
   const [showWeeklyLimit, setShowWeeklyLimit] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  /** 캐릭터 id → 이번 주 스케줄러 현황 (체크리스트에서 연동된 캐릭터만) */
+  /** ocid → 최신 스케줄러 현황 (체크리스트에서 연동된 캐릭터만) */
   const [schedules, setSchedules] = useState<Record<string, SchedulerState>>(
     {},
   );
   const [history, setHistory] = useState<WeekRecord[]>(loadHistory);
-  const today = useMemo(todayISO, []);
+  const [today, setToday] = useState(todayISO);
 
   useEffect(() => {
     saveState(state);
@@ -212,9 +215,56 @@ export default function App() {
     });
   }, []);
 
+  const monthlySyncStatus = useMemo(
+    () =>
+      Object.fromEntries(
+        state.characters.map((character) => {
+          const { ocid, accountId } = character.meta ?? {};
+          if (!ocid || !accountId) return [character.id, "manual"] as const;
+          const schedule = schedules[ocid];
+          return [
+            character.id,
+            schedule && schedulerReliability(schedule).monthlyBosses
+              ? "ready"
+              : "checking",
+          ] as const;
+        }),
+      ) as Record<string, "manual" | "ready" | "checking">,
+    [state.characters, schedules],
+  );
+
+  // 월간 응답이 축약/미수신 상태면 과거 entry를 현재 월 수익으로 계산하지 않는다.
+  // entry 자체는 보존해 정상 응답이 도착했을 때만 교체한다.
+  const charactersForSummary = useMemo(
+    () =>
+      state.characters.map((character) =>
+        monthlySyncStatus[character.id] === "checking"
+          ? {
+              ...character,
+              entries: character.entries.filter(
+                (entry) => BOSS_MAP.get(entry.bossId)?.reset !== "monthly",
+              ),
+            }
+          : character,
+      ),
+    [state.characters, monthlySyncStatus],
+  );
+
   const summary = useMemo(
-    () => computeAccount(state.characters, BOSS_MAP, today),
-    [state.characters, today],
+    () => computeAccount(charactersForSummary, BOSS_MAP, today),
+    [charactersForSummary, today],
+  );
+  const monthlyOverview = useMemo(
+    () => ({
+      monthLabel: `${Number(today.slice(5, 7))}월`,
+      completed: summary.monthlyBossSelected,
+      total: summary.monthlyBossTotal,
+      revenue: summary.monthlyBossRevenue,
+      checking: Object.values(monthlySyncStatus).filter(
+        (status) => status === "checking",
+      ).length,
+    }),
+    [monthlySyncStatus, summary, today],
   );
 
   // 판매 제한 그룹 표시용 계정 이름 (체크리스트에서 등록한 계정)
@@ -231,23 +281,24 @@ export default function App() {
     ? summary.characters.find((s) => s.id === selected.id)
     : undefined;
 
-  // 연동 캐릭터 전체의 이번 주 처치 현황을 조회해 보스 선택(entries)에 자동 반영한다.
-  // 이렇게 해야 "주간 보스 n/12"와 총 수익이 실제 처치 기준으로 계산된다.
-  const linkedKey = state.characters
-    .map((c) => `${c.id}:${c.meta?.ocid ?? ""}:${c.meta?.accountId ?? ""}`)
-    .join("|");
+  // Todo 탭의 강제 갱신을 포함해 모든 스케줄러 응답을 계산기 상태에 즉시 반영한다.
   useEffect(() => {
-    const accounts = new Map(loadTodoState().accounts.map((a) => [a.id, a]));
-    let cancelled = false;
-
-    const applyCleared = (charId: string, st: SchedulerState) => {
+    const onSchedulerState = (event: Event) => {
+      const { ocid, accountId, state: scheduler } = (
+        event as CustomEvent<SchedulerStateEventDetail>
+      ).detail;
+      setSchedules((prev) => ({ ...prev, [ocid]: scheduler }));
       setState((prev) => {
-        const index = prev.characters.findIndex((c) => c.id === charId);
+        const index = prev.characters.findIndex(
+          (character) =>
+            character.meta?.ocid === ocid &&
+            character.meta?.accountId === accountId,
+        );
         if (index < 0) return prev;
         const character = prev.characters[index];
         const next = entriesFromSchedule(
           character.entries,
-          st,
+          scheduler,
           character.partyPrefs ?? {},
         );
         if (entriesEqual(character.entries, next)) return prev;
@@ -256,33 +307,69 @@ export default function App() {
         return { ...prev, characters };
       });
     };
+    window.addEventListener(SCHEDULER_STATE_EVENT, onSchedulerState);
+    return () =>
+      window.removeEventListener(SCHEDULER_STATE_EVENT, onSchedulerState);
+  }, []);
 
-    for (const c of state.characters) {
-      const ocid = c.meta?.ocid;
-      const account = c.meta?.accountId
-        ? accounts.get(c.meta.accountId)
-        : undefined;
-      if (!ocid || !account) continue;
-      const charId = c.id;
-      fetchScheduler(ocid, account.id)
-        .then((st) => {
-          if (cancelled) return;
-          setSchedules((prev) => ({ ...prev, [charId]: st }));
-          applyCleared(charId, st);
-        })
-        .catch(() => {
-          // 조회 실패 시 처치 현황 반영만 생략한다
-        });
-    }
+  // 연동 캐릭터 전체를 최초 접속 및 화면 복귀 시 강제 갱신한다.
+  const linkedKey = state.characters
+    .map((c) => `${c.id}:${c.meta?.ocid ?? ""}:${c.meta?.accountId ?? ""}`)
+    .join("|");
+  useEffect(() => {
+    const accounts = new Map(loadTodoState().accounts.map((a) => [a.id, a]));
+    const retryTimers: number[] = [];
+    const refresh = () => {
+      for (const character of state.characters) {
+        const ocid = character.meta?.ocid;
+        const account = character.meta?.accountId
+          ? accounts.get(character.meta.accountId)
+          : undefined;
+        if (!ocid || !account) continue;
+        void fetchScheduler(ocid, account.id, { force: true })
+          .then((scheduler) => {
+            if (!schedulerReliability(scheduler).truncated) return;
+            retryTimers.push(
+              window.setTimeout(() => {
+                void fetchScheduler(ocid, account.id, { force: true }).catch(
+                  () => {},
+                );
+              }, 3_000),
+            );
+          })
+          .catch(() => {
+            // 조회 실패 시 기존 상태를 유지하고 다음 화면 복귀 때 재시도한다.
+          });
+      }
+    };
+
+    refresh();
+    let lastRefresh = Date.now();
+    const refreshOnReturn = () => {
+      if (document.visibilityState === "hidden") return;
+      setToday(todayISO());
+      if (Date.now() - lastRefresh < 60_000) return;
+      lastRefresh = Date.now();
+      refresh();
+    };
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {
-      cancelled = true;
+      retryTimers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedKey]);
 
-  const selectedSchedule = selected ? schedules[selected.id] : undefined;
+  const selectedSchedule = selected?.meta?.ocid
+    ? schedules[selected.meta.ocid]
+    : undefined;
   const clearedBossKeys = useMemo(
-    () => (selectedSchedule ? completedBossKeys(selectedSchedule) : null),
+    () =>
+      selectedSchedule && schedulerReliability(selectedSchedule).weeklyBosses
+        ? completedBossKeys(selectedSchedule)
+        : null,
     [selectedSchedule],
   );
 
@@ -293,6 +380,7 @@ export default function App() {
       recordCurrentWeek({
         revenue: summary.weeklyRevenue,
         crystals: summary.weeklyCrystalCount,
+        // 누적 스냅샷으로 저장하고 통계에서는 월별 증가분만 한 번 집계한다.
         monthlyBossRevenue: summary.monthlyBossRevenue,
         characterCount: state.characters.length,
       }),
@@ -563,6 +651,7 @@ export default function App() {
             <CharacterSidebar
               characters={state.characters}
               summaries={summary.characters}
+              monthlySyncStatus={monthlySyncStatus}
               selectedId={state.selectedId}
               onAdd={addCharacter}
               onImport={() => setShowImport(true)}
@@ -577,6 +666,9 @@ export default function App() {
                   summary={selectedSummary}
                   today={today}
                   clearedBossKeys={clearedBossKeys}
+                  monthlyChecking={
+                    monthlySyncStatus[selected.id] === "checking"
+                  }
                   onToggle={toggleEntry}
                   onUpdateEntry={updateEntry}
                   onApplyPreset={applyPreset}
@@ -598,7 +690,10 @@ export default function App() {
             </section>
           </main>
 
-          <RevenueHistory records={visibleHistory(history)} />
+          <RevenueHistory
+            records={visibleHistory(history)}
+            monthly={monthlyOverview}
+          />
 
           <footer className="app-footer">
             <h3>계산 기준</h3>

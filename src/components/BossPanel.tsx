@@ -31,8 +31,10 @@ interface Props {
   character: Character;
   summary: CharacterSummary | undefined;
   today: string;
-  /** 이번 주 처치 완료 `${bossId}:${difficulty}` 집합 (연동 안 됨 = null) */
+  /** 현재 주기 처치 완료 `${bossId}:${difficulty}` 집합 (연동/신뢰 불가 = null) */
   clearedBossKeys: ReadonlySet<string> | null;
+  /** 넥슨 API의 월간 보스 응답이 축약되어 재확인 중인지 */
+  monthlyChecking: boolean;
   onToggle(bossId: string, difficulty: Difficulty): void;
   onUpdateEntry(bossId: string, patch: Partial<BossEntry>): void;
   onApplyPreset(preset: BossPreset): void;
@@ -67,6 +69,7 @@ export function BossPanel({
   summary,
   today,
   clearedBossKeys,
+  monthlyChecking,
   onToggle,
   onUpdateEntry,
   onApplyPreset,
@@ -112,11 +115,17 @@ export function BossPanel({
 
       {clearedBossKeys && (
         <p className="notice info sync-note">
-          넥슨 API 연동됨 — 이번 주에 실제로 처치한 보스가 난이도(
+          넥슨 API 연동됨 — 현재 주기에 실제로 처치한 보스가 난이도(
           <span className="cleared-dot" aria-hidden="true">✓</span> 표시)까지
           자동 선택되어 수익에 반영됩니다. 파티 인원을 바꾸면 다음 주에도 그대로
           유지됩니다. 주간·월간 보스를 수동으로 바꿔도 다음 새로고침 때 처치 내역
           기준으로 되돌아갑니다.
+        </p>
+      )}
+      {monthlyChecking && (
+        <p className="notice warn">
+          월간 보스 API 정보를 다시 확인하고 있습니다. 축약된 응답은 미완료로
+          적용하지 않으며, 화면으로 돌아올 때 자동으로 재조회합니다.
         </p>
       )}
 

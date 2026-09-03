@@ -18,7 +18,10 @@ export interface WeekRecord {
   revenue: number;
   /** 판매로 집계된 결정 수 */
   crystals: number;
-  /** 월간 보스 수익 (메소, 해당 주 시점 기준) */
+  /**
+   * 해당 주 시점의 월간 보스 누적 수익 스냅샷.
+   * 주간 수익이 아니므로 표시/통계에서는 월별 증가분으로 환산한다.
+   */
   monthlyBossRevenue: number;
   /** 집계에 포함된 캐릭터 수 */
   characterCount: number;

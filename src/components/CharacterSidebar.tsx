@@ -1,12 +1,15 @@
 import type { Character } from '../types';
 import type { CharacterSummary } from '../lib/calc';
-import { RULES } from '../data/crystalData';
+import { BOSSES, RULES } from '../data/crystalData';
 import { formatMeso } from '../lib/format';
 import { CharacterAvatar } from './CharacterAvatar';
+
+export type MonthlySyncStatus = 'manual' | 'ready' | 'checking';
 
 interface Props {
   characters: Character[];
   summaries: CharacterSummary[];
+  monthlySyncStatus: Record<string, MonthlySyncStatus>;
   selectedId: string | null;
   onAdd(): void;
   onImport(): void;
@@ -18,6 +21,7 @@ interface Props {
 export function CharacterSidebar({
   characters,
   summaries,
+  monthlySyncStatus,
   selectedId,
   onAdd,
   onImport,
@@ -27,6 +31,9 @@ export function CharacterSidebar({
 }: Props) {
   const summaryMap = new Map(summaries.map((s) => [s.id, s]));
   const full = characters.length >= RULES.maxCharacters;
+  const monthlyBossTotal = BOSSES.filter(
+    (boss) => boss.reset === 'monthly',
+  ).length;
 
   return (
     <aside className="sidebar">
@@ -59,6 +66,9 @@ export function CharacterSidebar({
           const s = summaryMap.get(character.id);
           const over12 =
             (s?.weeklyBossSelected ?? 0) > RULES.weeklyBossSellLimitPerCharacter;
+          const monthlySelected = s?.monthlyBossSelected ?? 0;
+          const monthlyChecking =
+            monthlySyncStatus[character.id] === 'checking';
           return (
             <div
               key={character.id}
@@ -116,8 +126,18 @@ export function CharacterSidebar({
                   주간 보스 {s?.weeklyBossSelected ?? 0}/
                   {RULES.weeklyBossSellLimitPerCharacter}
                 </span>
-                {(s?.monthlyBossRevenue ?? 0) > 0 && (
-                  <span className="chip">월간 +{formatMeso(s?.monthlyBossRevenue ?? 0)}</span>
+                {monthlyBossTotal > 0 && (
+                  <span
+                    className={
+                      'chip monthly-progress' +
+                      (monthlySelected >= monthlyBossTotal ? ' done' : '') +
+                      (monthlyChecking ? ' checking' : '')
+                    }
+                  >
+                    {monthlyChecking
+                      ? '월간 보스 확인 중'
+                      : `월간 보스 ${monthlySelected}/${monthlyBossTotal}`}
+                  </span>
                 )}
               </div>
             </div>

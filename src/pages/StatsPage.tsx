@@ -5,6 +5,10 @@ import { weekKey } from "../lib/week";
 import { formatMeso } from "../lib/format";
 import { gotoHome } from "../lib/router";
 import { chartWindow, computeStatMetrics } from "../lib/stats";
+import {
+  attributedWeekRevenue,
+  monthlyBossDeltaByWeek,
+} from "../lib/monthlyAttribution";
 
 type RangeKey = "4w" | "12w" | "52w";
 
@@ -29,6 +33,10 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
   const view = useMemo(
     () => chartWindow(sortedDesc, RANGE_SIZE[range]),
     [sortedDesc, range],
+  );
+  const monthlyDelta = useMemo(
+    () => monthlyBossDeltaByWeek(sortedDesc),
+    [sortedDesc],
   );
 
   const metrics = useMemo(
@@ -81,7 +89,7 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
               checked={showMonthly}
               onChange={(e) => setShowMonthly(e.target.checked)}
             />
-            월간 보스 포함
+            월간 수익 포함 (월 1회)
           </label>
         </div>
       </div>
@@ -101,12 +109,14 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
 
       <RevenueChart
         data={view}
+        monthlyDelta={monthlyDelta}
         showMonthly={showMonthly}
         currentWeek={currentWeek}
       />
 
       <BestWorst
         records={sortedDesc.slice(0, RANGE_SIZE[range])}
+        monthlyDelta={monthlyDelta}
         showMonthly={showMonthly}
       />
     </div>
@@ -123,17 +133,19 @@ const CHART_PAD_RIGHT = 8;
 
 function RevenueChart({
   data,
+  monthlyDelta,
   showMonthly,
   currentWeek,
 }: {
   data: WeekRecord[];
+  monthlyDelta: ReadonlyMap<string, number>;
   showMonthly: boolean;
   currentWeek: string;
 }) {
   if (data.length === 0) return null;
 
-  const values = data.map(
-    (r) => r.revenue + (showMonthly ? r.monthlyBossRevenue : 0),
+  const values = data.map((r) =>
+    attributedWeekRevenue(r, monthlyDelta, showMonthly),
   );
   const max = Math.max(1, ...values);
   const gridSteps = 4;
@@ -182,11 +194,13 @@ function RevenueChart({
             );
           })}
 
-          {/* 주간 수익 바 (월간 보스 스택 시 아래) */}
+          {/* 주간 수익 + 월간 증가분(해당 월 최초 반영 주에만) */}
           {data.map((r, i) => {
             const isCurrent = r.week === currentWeek;
             const weekly = r.revenue;
-            const monthly = showMonthly ? r.monthlyBossRevenue : 0;
+            const monthly = showMonthly
+              ? (monthlyDelta.get(r.week) ?? 0)
+              : 0;
             const bottomY = CHART_PAD_TOP + innerH;
             const weeklyH = (weekly / max) * innerH;
             const monthlyH = (monthly / max) * innerH;
@@ -220,7 +234,8 @@ function RevenueChart({
                 <title>
                   {weekRangeLabel(r.week)}
                   {"\n"}주간 수익 {formatMeso(weekly)}
-                  {monthly > 0 && `\n월간 보스 ${formatMeso(monthly)}`}
+                  {monthly > 0 &&
+                    `\n월간 보스 증가분 ${formatMeso(monthly)}`}
                   {"\n결정 " +
                     r.crystals +
                     "개 · 캐릭터 " +
@@ -253,7 +268,9 @@ function RevenueChart({
       </div>
       <div className="stats-legend">
         <span className="legend-chip weekly">주간 수익</span>
-        {showMonthly && <span className="legend-chip monthly">월간 보스</span>}
+        {showMonthly && (
+          <span className="legend-chip monthly">월간 보스 (월 1회)</span>
+        )}
         <span className="stats-hint">
           막대에 마우스를 올리면 해당 주 상세가 표시됩니다
         </span>
@@ -288,14 +305,16 @@ function round1(n: number): string {
 
 function BestWorst({
   records,
+  monthlyDelta,
   showMonthly,
 }: {
   records: WeekRecord[];
+  monthlyDelta: ReadonlyMap<string, number>;
   showMonthly: boolean;
 }) {
   if (records.length === 0) return null;
   const value = (r: WeekRecord) =>
-    r.revenue + (showMonthly ? r.monthlyBossRevenue : 0);
+    attributedWeekRevenue(r, monthlyDelta, showMonthly);
   const sorted = [...records].sort((a, b) => value(b) - value(a));
   const top = sorted.slice(0, 3);
   const bottom = sorted.slice(-3).reverse();

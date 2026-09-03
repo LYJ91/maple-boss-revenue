@@ -108,6 +108,47 @@ describe("finalizePendingWeeks", () => {
     expect(past!.revenue).toBeGreaterThan(0);
   });
 
+  it("정상 응답의 검은 마법사 수익은 월간 누적 스냅샷으로 보존한다", async () => {
+    const fetchScheduler = vi.fn().mockResolvedValue({
+      date: "2026-07-15",
+      weeklyBossClearCount: 1,
+      weeklyBossClearLimit: 12,
+      bosses: [
+        {
+          name: "스우",
+          difficulty: "hard",
+          cycle: "bossWeekly",
+          complete: true,
+        },
+        {
+          name: "검은 마법사",
+          difficulty: "hard",
+          cycle: "bossMonthly",
+          complete: true,
+        },
+      ],
+      contents: [],
+    });
+    vi.doMock("./scheduler", async () => {
+      const actual =
+        await vi.importActual<typeof import("./scheduler")>("./scheduler");
+      return { ...actual, fetchScheduler };
+    });
+    const { finalizePendingWeeks } = await import("./weekFinalize");
+    const character: Character = {
+      ...linked,
+      partyPrefs: { lotus: 2, "black-mage": 2 },
+    };
+
+    await finalizePendingWeeks(
+      [character],
+      new Date(2026, 6, 16, 12, 0, 0),
+    );
+
+    const past = loadHistory().find((r) => r.week === "2026-07-09");
+    expect(past?.monthlyBossRevenue).toBe(Math.floor(665_000_000 / 2));
+  });
+
   it("벨로나 과거 처치 수익도 3인 상한으로 확정한다", async () => {
     const fetchScheduler = vi.fn().mockResolvedValue({
       date: "2026-08-26",
@@ -158,6 +199,43 @@ describe("finalizePendingWeeks", () => {
     const past = loadHistory().find((r) => r.week === "2026-08-20");
     expect(past?.revenue).toBe(Math.floor(2_950_000_000 / 3));
     expect(past?.crystals).toBe(1);
+  });
+
+  it("축약된 과거 스케줄러 응답은 0원으로 확정하지 않고 재시도 대상으로 둔다", async () => {
+    const fetchScheduler = vi.fn().mockResolvedValue({
+      date: "2026-07-15",
+      weeklyBossClearCount: 0,
+      weeklyBossClearLimit: 12,
+      bosses: [
+        {
+          name: "검은 마법사",
+          difficulty: "hard",
+          cycle: "bossMonthly",
+          complete: false,
+        },
+        {
+          name: "검은 마법사",
+          difficulty: "extreme",
+          cycle: "bossMonthly",
+          complete: false,
+        },
+      ],
+      contents: [],
+    });
+    vi.doMock("./scheduler", async () => {
+      const actual =
+        await vi.importActual<typeof import("./scheduler")>("./scheduler");
+      return { ...actual, fetchScheduler };
+    });
+    const { finalizePendingWeeks } = await import("./weekFinalize");
+
+    const result = await finalizePendingWeeks(
+      [linked],
+      new Date(2026, 6, 16, 12, 0, 0),
+    );
+
+    expect(result.finalizedWeeks).toEqual([]);
+    expect(loadHistory().find((r) => r.week === "2026-07-09")).toBeUndefined();
   });
 
   it("복구 창 밖이고 기존 스냅샷이 있으면 그 값을 확정하고 API는 생략한다", async () => {

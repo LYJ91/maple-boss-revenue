@@ -30,6 +30,8 @@ export interface CharacterSummary {
   weeklyBossCounted: number;
   /** 12개 제한으로 잘려나간 주간 보스 결정 가치 합 */
   weeklyLostToCharLimit: number;
+  /** 선택/완료된 월간 보스 수 */
+  monthlyBossSelected: number;
   /** 월간 보스 수익 (월 1회) */
   monthlyBossRevenue: number;
 }
@@ -61,6 +63,10 @@ export interface AccountSummary {
   capGroups: number;
   /** 그룹별 판매 현황 (결정 수 많은 순) */
   groups: CapGroupSummary[];
+  /** 전체 캐릭터에서 선택/완료된 월간 보스 수 */
+  monthlyBossSelected: number;
+  /** 전체 캐릭터가 완료할 수 있는 월간 보스 수 */
+  monthlyBossTotal: number;
   /** 월간 보스 수익 합 */
   monthlyBossRevenue: number;
   /** 주간 수익 × weeksPerMonth + 월간 보스 수익 */
@@ -116,7 +122,11 @@ export function computeAccount(
 ): AccountSummary {
   const characterSummaries: CharacterSummary[] = [];
   const soldByGroup = new Map<string, CapGroup>();
+  const monthlyBossesPerCharacter = [...bossMap.values()].filter(
+    (boss) => boss.reset === 'monthly',
+  ).length;
   let weeklyCrystalTotal = 0;
+  let monthlyBossSelected = 0;
   let monthlyBossRevenue = 0;
 
   for (const character of characters) {
@@ -134,6 +144,7 @@ export function computeAccount(
 
     const weeklyValues: number[] = [];
     let charMonthly = 0;
+    let charMonthlySelected = 0;
 
     for (const entry of character.entries) {
       const resolved = resolveEntry(bossMap, entry, dateISO);
@@ -144,6 +155,7 @@ export function computeAccount(
         weeklyValues.push(value);
       } else if (boss.reset === 'monthly') {
         charMonthly += value;
+        charMonthlySelected += 1;
       }
     }
 
@@ -154,6 +166,7 @@ export function computeAccount(
     for (const value of counted) soldCrystals.push({ value });
 
     weeklyCrystalTotal += weeklyValues.length;
+    monthlyBossSelected += charMonthlySelected;
     monthlyBossRevenue += charMonthly;
 
     characterSummaries.push({
@@ -163,6 +176,7 @@ export function computeAccount(
       weeklyBossSelected: weeklyValues.length,
       weeklyBossCounted: counted.length,
       weeklyLostToCharLimit: dropped.reduce((s, v) => s + v, 0),
+      monthlyBossSelected: charMonthlySelected,
       monthlyBossRevenue: charMonthly,
     });
   }
@@ -204,6 +218,8 @@ export function computeAccount(
     weeklyLostToWorldCap: weeklyRevenueUncapped - weeklyRevenue,
     capGroups: Math.max(1, soldByGroup.size),
     groups,
+    monthlyBossSelected,
+    monthlyBossTotal: characters.length * monthlyBossesPerCharacter,
     monthlyBossRevenue,
     monthlyRevenue: weeklyRevenue * RULES.weeksPerMonth + monthlyBossRevenue,
     characters: characterSummaries,

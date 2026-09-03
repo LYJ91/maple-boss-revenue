@@ -48,19 +48,15 @@ describe("computeStatMetrics", () => {
     expect(metrics[1].tone).toBe("flat");
   });
 
-  it("월간 보스 포함 옵션을 켜면 그 값이 합산돼 지표가 커진다", () => {
+  it("반복 월간 스냅샷은 월간 수익을 한 번만 합산한다", () => {
     const sortedDesc: WeekRecord[] = [
+      rec("2026-07-23", 10_000_000, 5_000_000),
       rec("2026-07-16", 10_000_000, 5_000_000),
       rec("2026-07-09", 10_000_000, 5_000_000),
       rec("2026-07-02", 10_000_000, 5_000_000),
-      rec("2026-06-25", 10_000_000, 5_000_000),
     ];
-    const off = computeStatMetrics(sortedDesc, false)[0].value;
-    const on = computeStatMetrics(sortedDesc, true)[0].value;
-    // 켰을 때 값이 다르고 더 커야 한다 (4천만 → 6천만)
-    expect(off).not.toBe(on);
-    expect(off.startsWith("4,000만")).toBe(true);
-    expect(on.startsWith("6,000만")).toBe(true);
+    const total = computeStatMetrics(sortedDesc, true)[0].value;
+    expect(total.startsWith("4,500만")).toBe(true);
   });
 
   it("입력이 비어 있으면 '최고 주' 지표를 만들지 않는다", () => {

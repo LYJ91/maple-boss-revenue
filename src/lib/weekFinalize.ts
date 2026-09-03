@@ -16,6 +16,7 @@ import {
 import {
   entriesFromSchedule,
   fetchScheduler,
+  schedulerReliability,
   type SchedulerState,
 } from "./scheduler";
 import { canQueryNexonDate, shiftWeek, weekEndDate, weekKey } from "./week";
@@ -37,6 +38,13 @@ function summaryFromSchedules(
   schedules: Map<string, SchedulerState>,
   dateISO: string,
 ) {
+  if (
+    [...schedules.values()].some(
+      (schedule) => !schedulerReliability(schedule).weeklyBosses,
+    )
+  ) {
+    return null;
+  }
   const projected = characters.map((character) => {
     const state = schedules.get(character.id);
     if (!state) return character;
@@ -128,10 +136,12 @@ export async function finalizePendingWeeks(
     if (!schedules) break;
 
     const summary = summaryFromSchedules(characters, schedules, snapshotDate);
+    if (!summary) break;
     records = upsertWeekRecord({
       week,
       revenue: summary.weeklyRevenue,
       crystals: summary.weeklyCrystalCount,
+      // 월간 누적 스냅샷. 표시/통계 단계에서 월별 증가분으로 환산한다.
       monthlyBossRevenue: summary.monthlyBossRevenue,
       characterCount: characters.length,
       updatedAt: now.toISOString(),
