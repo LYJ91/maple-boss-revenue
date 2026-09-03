@@ -9,6 +9,7 @@ export type MonthlySyncStatus = 'manual' | 'ready' | 'checking';
 interface Props {
   characters: Character[];
   summaries: CharacterSummary[];
+  weeklyProgress: Record<string, { done: number; total: number }>;
   monthlySyncStatus: Record<string, MonthlySyncStatus>;
   selectedId: string | null;
   onAdd(): void;
@@ -21,6 +22,7 @@ interface Props {
 export function CharacterSidebar({
   characters,
   summaries,
+  weeklyProgress,
   monthlySyncStatus,
   selectedId,
   onAdd,
@@ -69,6 +71,7 @@ export function CharacterSidebar({
           const monthlySelected = s?.monthlyBossSelected ?? 0;
           const monthlyChecking =
             monthlySyncStatus[character.id] === 'checking';
+          const weekly = weeklyProgress[character.id];
           return (
             <div
               key={character.id}
@@ -123,8 +126,8 @@ export function CharacterSidebar({
               <div className="character-chips">
                 <span className="chip">결정 {s?.weeklyCrystalCount ?? 0}개</span>
                 <span className={'chip' + (over12 ? ' warn' : '')}>
-                  주간 보스 {s?.weeklyBossSelected ?? 0}/
-                  {RULES.weeklyBossSellLimitPerCharacter}
+                  주간 보스 {weekly?.done ?? s?.weeklyBossSelected ?? 0}/
+                  {weekly?.total ?? RULES.weeklyBossSellLimitPerCharacter}
                 </span>
                 {monthlyBossTotal > 0 && (
                   <span

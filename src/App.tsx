@@ -17,6 +17,7 @@ import {
   fetchScheduler,
   schedulerReliability,
   SCHEDULER_STATE_EVENT,
+  weeklyBossProgress,
   type SchedulerStateEventDetail,
   type SchedulerState,
 } from "./lib/scheduler";
@@ -230,6 +231,19 @@ export default function App() {
           ] as const;
         }),
       ) as Record<string, "manual" | "ready" | "checking">,
+    [state.characters, schedules],
+  );
+  const weeklyProgress = useMemo(
+    () =>
+      Object.fromEntries(
+        state.characters.flatMap((character) => {
+          const ocid = character.meta?.ocid;
+          const schedule = ocid ? schedules[ocid] : undefined;
+          return schedule
+            ? [[character.id, weeklyBossProgress(schedule)]]
+            : [];
+        }),
+      ) as Record<string, { done: number; total: number }>,
     [state.characters, schedules],
   );
 
@@ -651,6 +665,7 @@ export default function App() {
             <CharacterSidebar
               characters={state.characters}
               summaries={summary.characters}
+              weeklyProgress={weeklyProgress}
               monthlySyncStatus={monthlySyncStatus}
               selectedId={state.selectedId}
               onAdd={addCharacter}
@@ -666,6 +681,7 @@ export default function App() {
                   summary={selectedSummary}
                   today={today}
                   clearedBossKeys={clearedBossKeys}
+                  weeklyProgress={weeklyProgress[selected.id]}
                   monthlyChecking={
                     monthlySyncStatus[selected.id] === "checking"
                   }

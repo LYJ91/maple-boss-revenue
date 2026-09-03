@@ -249,9 +249,10 @@ describe('weeklyBossProgress', () => {
     expect(p.total).toBe(12);
   });
 
-  it('주간 보스 행이 없는 축약 응답은 0/12가 아니라 확인 중으로 표시한다', () => {
-    const p = weeklyBossProgress(
+  it('주간 보스 행이 축약되면 공식 합계 카운터로 0/12·1/12를 표시한다', () => {
+    const zero = weeklyBossProgress(
       makeState({
+        weeklyBossClearCount: 0,
         bosses: [
           {
             name: '검은 마법사',
@@ -262,11 +263,29 @@ describe('weeklyBossProgress', () => {
         ],
       }),
     );
-    expect(p).toEqual({
+    expect(zero).toEqual({
       done: 0,
       total: 12,
       complete: false,
-      checking: true,
+    });
+
+    const one = weeklyBossProgress(
+      makeState({
+        weeklyBossClearCount: 1,
+        bosses: [
+          {
+            name: '검은 마법사',
+            difficulty: 'hard',
+            cycle: 'bossMonthly',
+            complete: false,
+          },
+        ],
+      }),
+    );
+    expect(one).toEqual({
+      done: 1,
+      total: 12,
+      complete: false,
     });
   });
 });

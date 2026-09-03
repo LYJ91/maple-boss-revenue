@@ -2414,15 +2414,6 @@ body {
   gap: 7px;
 }
 
-.todo-cell.auto.checking {
-  border-style: dashed;
-  color: var(--text-dim);
-}
-
-.todo-cell.auto.checking .todo-check-circle {
-  border-style: dashed;
-}
-
 .todo-count {
   font-size: 12.5px;
   font-weight: 700;

@@ -264,8 +264,6 @@ export interface AutoProgress {
   done: number;
   total: number;
   complete: boolean;
-  /** 축약 응답이라 완료/미완료를 확정할 수 없음 */
-  checking?: boolean;
 }
 
 /**
@@ -277,7 +275,13 @@ export interface AutoProgress {
 export function weeklyBossProgress(state: SchedulerState): AutoProgress {
   const total = state.weeklyBossClearLimit || WEEKLY_BOSS_DEFAULT_LIMIT;
   if (!schedulerReliability(state).weeklyBosses) {
-    return { done: 0, total, complete: false, checking: true };
+    // 보스별 행이 축약돼도 상단 합계 카운터는 진행도 표시용으로 사용할 수 있다.
+    // 상세 행이 있으면 아래에서 complete 플래그를 직접 세어 카운터 오차를 보정한다.
+    const done = Math.min(
+      Math.max(0, state.weeklyBossClearCount),
+      total,
+    );
+    return { done, total, complete: done >= total };
   }
   const clearedNames = new Set(
     state.bosses
