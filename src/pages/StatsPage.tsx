@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeekRecord } from "../lib/history";
 import { weekRangeLabel } from "../lib/history";
 import { weekKey } from "../lib/week";
 import { formatMeso } from "../lib/format";
 import { gotoHome } from "../lib/router";
-import { chartWindow, computeStatMetrics } from "../lib/stats";
+import {
+  chartWindow,
+  computeStatMetrics,
+  niceChartMaximum,
+} from "../lib/stats";
 import {
   attributedWeekRevenue,
   monthlyBossDeltaByWeek,
@@ -70,13 +74,16 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
           </p>
         </div>
         <div className="stats-toolbar">
-          <div className="range-buttons" role="tablist" aria-label="기간 선택">
+          <div className="stats-range" role="tablist" aria-label="기간 선택">
             {(Object.keys(RANGE_LABEL) as RangeKey[]).map((key) => (
               <button
                 key={key}
+                type="button"
                 role="tab"
                 aria-selected={range === key}
-                className={"btn sm" + (range === key ? " primary" : " ghost")}
+                className={
+                  "stats-range-btn" + (range === key ? " active" : "")
+                }
                 onClick={() => setRange(key)}
               >
                 {RANGE_LABEL[key]}
@@ -89,7 +96,10 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
               checked={showMonthly}
               onChange={(e) => setShowMonthly(e.target.checked)}
             />
-            월간 수익 포함 (월 1회)
+            <span className="stats-toggle-track" aria-hidden="true">
+              <span />
+            </span>
+            월간 수익 포함
           </label>
         </div>
       </div>
@@ -112,12 +122,14 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
         monthlyDelta={monthlyDelta}
         showMonthly={showMonthly}
         currentWeek={currentWeek}
+        rangeLabel={RANGE_LABEL[range]}
       />
 
       <BestWorst
         records={sortedDesc.slice(0, RANGE_SIZE[range])}
         monthlyDelta={monthlyDelta}
         showMonthly={showMonthly}
+        currentWeek={currentWeek}
       />
     </div>
   );
@@ -125,55 +137,176 @@ export function StatsPage({ records }: { records: WeekRecord[] }) {
 
 /* ───── 차트 ───── */
 
-const CHART_HEIGHT = 220;
-const CHART_PAD_TOP = 14;
-const CHART_PAD_BOTTOM = 30;
-const CHART_PAD_LEFT = 8;
-const CHART_PAD_RIGHT = 8;
+const CHART_HEIGHT = 296;
+const CHART_PAD_TOP = 24;
+const CHART_PAD_BOTTOM = 42;
+const CHART_PAD_LEFT = 64;
+const CHART_PAD_RIGHT = 24;
 
 function RevenueChart({
   data,
   monthlyDelta,
   showMonthly,
   currentWeek,
+  rangeLabel,
 }: {
   data: WeekRecord[];
   monthlyDelta: ReadonlyMap<string, number>;
   showMonthly: boolean;
   currentWeek: string;
+  rangeLabel: string;
 }) {
+  const [activeWeek, setActiveWeek] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (element) element.scrollLeft = element.scrollWidth;
+  }, [data.length]);
   if (data.length === 0) return null;
 
-  const values = data.map((r) =>
-    attributedWeekRevenue(r, monthlyDelta, showMonthly),
-  );
-  const max = Math.max(1, ...values);
+  // 선 높이는 항상 주간 수익 기준으로 유지한다. 월간 수익은 보라 표식으로
+  // 분리해 큰 월간 정산액이 주간 흐름을 납작하게 만들지 않게 한다.
+  const values = data.map((record) => record.revenue);
+  const hasRevenue = values.some((value) => value > 0);
+  const max = niceChartMaximum(values);
   const gridSteps = 4;
-
-  // 반응형: SVG viewBox를 넓게 잡고, 바 너비를 균등 분할
-  const width = Math.max(320, data.length * 44);
+  const pointGap = data.length > 24 ? 28 : data.length > 8 ? 52 : 120;
+  const width = Math.max(
+    640,
+    CHART_PAD_LEFT +
+      CHART_PAD_RIGHT +
+      Math.max(1, data.length - 1) * pointGap,
+  );
   const innerH = CHART_HEIGHT - CHART_PAD_TOP - CHART_PAD_BOTTOM;
   const innerW = width - CHART_PAD_LEFT - CHART_PAD_RIGHT;
-  const barWidth = Math.max(6, (innerW / data.length) * 0.66);
+  const baselineY = CHART_PAD_TOP + innerH;
+  const xFor = (index: number) =>
+    data.length === 1
+      ? CHART_PAD_LEFT + innerW / 2
+      : CHART_PAD_LEFT + (innerW / (data.length - 1)) * index;
+  const yFor = (value: number) =>
+    CHART_PAD_TOP + innerH * (1 - Math.min(1, value / max));
 
-  const xFor = (i: number) =>
-    CHART_PAD_LEFT + (innerW / data.length) * (i + 0.5);
+  const points = data.map((record, index) => {
+    const monthly = showMonthly ? (monthlyDelta.get(record.week) ?? 0) : 0;
+    const total = record.revenue + monthly;
+    return {
+      record,
+      weekly: record.revenue,
+      monthly,
+      total,
+      x: xFor(index),
+      y: yFor(record.revenue),
+    };
+  });
+  const selectedIndex = activeWeek
+    ? points.findIndex((point) => point.record.week === activeWeek)
+    : -1;
+  const activeIndex = selectedIndex >= 0 ? selectedIndex : points.length - 1;
+  const active = points[activeIndex];
+  const previous = activeIndex > 0 ? points[activeIndex - 1] : null;
+  const trend =
+    previous && previous.weekly > 0
+      ? ((active.weekly - previous.weekly) / previous.weekly) * 100
+      : null;
+  const currentIndex = points.findIndex(
+    (point) => point.record.week === currentWeek,
+  );
+  const settledPoints =
+    currentIndex === points.length - 1 && points.length > 1
+      ? points.slice(0, -1)
+      : points;
+  const linePath = settledPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
+  const areaPath = `${linePath} L ${settledPoints[settledPoints.length - 1].x} ${baselineY} L ${settledPoints[0].x} ${baselineY} Z`;
+  const labelStep = Math.max(1, Math.ceil(data.length / 7));
+  const spansYears = new Set(data.map((record) => record.week.slice(0, 4)))
+    .size > 1;
+  const hitWidth =
+    data.length === 1 ? innerW : Math.max(24, innerW / (data.length - 1));
 
   return (
     <div className="stats-chart-panel">
-      <div className="stats-chart-scroll">
+      <div className="stats-chart-head">
+        <div>
+          <span className="stats-chart-kicker">{rangeLabel}</span>
+          <h3>주간 수익 흐름</h3>
+        </div>
+        <div className="stats-chart-active" aria-live="polite">
+          <span>{weekRangeLabel(active.record.week)}</span>
+          <strong>
+            {formatMeso(active.total)}
+            <small> 메소</small>
+          </strong>
+          <span
+            className={
+              "stats-chart-trend" +
+              (trend == null
+                ? ""
+                : trend > 0
+                  ? " up"
+                  : trend < 0
+                    ? " down"
+                    : "")
+            }
+          >
+            {active.record.week === currentWeek
+              ? "이번 주 집계 중"
+              : trend == null
+                ? "이전 기록 없음"
+                : `${trend > 0 ? "+" : ""}${trend.toFixed(1)}%`}
+          </span>
+        </div>
+      </div>
+      <div className="stats-chart-breakdown">
+        <span>
+          주간 <strong>{formatMeso(active.weekly)}</strong>
+        </span>
+        {active.monthly > 0 && (
+          <span className="monthly">
+            월간 반영 <strong>{formatMeso(active.monthly)}</strong>
+          </span>
+        )}
+      </div>
+      <div ref={scrollRef} className="stats-chart-scroll">
         <svg
           className="stats-chart"
           viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
+          style={{
+            width: data.length <= 4 ? "100%" : `${width}px`,
+            minWidth: "100%",
+          }}
           role="img"
-          aria-label="주간 수익 트렌드"
+          aria-label={`${rangeLabel} 주간 수익 추이`}
         >
-          {/* 격자선 + 눈금 라벨 */}
+          <defs>
+            <linearGradient
+              id="stats-area-fill"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
+            </linearGradient>
+          </defs>
+
+          <rect
+            className="stats-plot-bg"
+            x={CHART_PAD_LEFT}
+            y={CHART_PAD_TOP}
+            width={innerW}
+            height={innerH}
+            rx="8"
+          />
+
           {Array.from({ length: gridSteps + 1 }).map((_, i) => {
             const y = CHART_PAD_TOP + (innerH / gridSteps) * i;
             const value = max * (1 - i / gridSteps);
             return (
-              <g key={i}>
+              <g key={`grid-${i}`}>
                 <line
                   x1={CHART_PAD_LEFT}
                   x2={width - CHART_PAD_RIGHT}
@@ -181,98 +314,142 @@ function RevenueChart({
                   y2={y}
                   className="stats-grid-line"
                 />
-                {i < gridSteps && (
-                  <text
-                    x={CHART_PAD_LEFT + 4}
-                    y={y - 3}
-                    className="stats-grid-label"
-                  >
-                    {abbreviateMeso(value)}
-                  </text>
-                )}
+                <text
+                  x={CHART_PAD_LEFT - 10}
+                  y={y + 4}
+                  className="stats-grid-label"
+                  textAnchor="end"
+                >
+                  {hasRevenue
+                    ? abbreviateMeso(value)
+                    : i === gridSteps
+                      ? "0"
+                      : ""}
+                </text>
               </g>
             );
           })}
 
-          {/* 주간 수익 + 월간 증가분(해당 월 최초 반영 주에만) */}
-          {data.map((r, i) => {
-            const isCurrent = r.week === currentWeek;
-            const weekly = r.revenue;
-            const monthly = showMonthly
-              ? (monthlyDelta.get(r.week) ?? 0)
-              : 0;
-            const bottomY = CHART_PAD_TOP + innerH;
-            const weeklyH = (weekly / max) * innerH;
-            const monthlyH = (monthly / max) * innerH;
-            const x = xFor(i) - barWidth / 2;
-            return (
-              <g key={r.week} className="stats-bar-group">
-                {weekly > 0 && (
-                  <rect
-                    x={x}
-                    y={bottomY - weeklyH}
-                    width={barWidth}
-                    height={weeklyH}
-                    className={
-                      "stats-bar weekly" + (isCurrent ? " current" : "")
-                    }
-                    rx="2"
-                  />
-                )}
-                {monthly > 0 && (
-                  <rect
-                    x={x}
-                    y={bottomY - weeklyH - monthlyH}
-                    width={barWidth}
-                    height={monthlyH}
-                    className={
-                      "stats-bar monthly" + (isCurrent ? " current" : "")
-                    }
-                    rx="2"
-                  />
-                )}
-                <title>
-                  {weekRangeLabel(r.week)}
-                  {"\n"}주간 수익 {formatMeso(weekly)}
-                  {monthly > 0 &&
-                    `\n월간 보스 증가분 ${formatMeso(monthly)}`}
-                  {"\n결정 " +
-                    r.crystals +
-                    "개 · 캐릭터 " +
-                    r.characterCount +
-                    "개"}
-                </title>
-              </g>
-            );
-          })}
+          <path
+            className="stats-area"
+            d={areaPath}
+            fill="url(#stats-area-fill)"
+          />
+          <path className="stats-line" d={linePath} />
+          {currentIndex === points.length - 1 && points.length > 1 && (
+            <line
+              className="stats-current-link"
+              x1={points[currentIndex - 1].x}
+              y1={points[currentIndex - 1].y}
+              x2={points[currentIndex].x}
+              y2={points[currentIndex].y}
+            />
+          )}
 
-          {/* X축 라벨: 시작·중간·끝 3개만 (혼잡 방지) */}
-          {data.length > 0 &&
-            [0, Math.floor(data.length / 2), data.length - 1]
-              .filter((i, idx, arr) => arr.indexOf(i) === idx)
-              .map((i) => {
-                const label = shortWeekLabel(data[i].week);
-                return (
-                  <text
-                    key={i}
-                    x={xFor(i)}
-                    y={CHART_HEIGHT - 8}
-                    className="stats-x-label"
-                    textAnchor="middle"
-                  >
-                    {label}
-                  </text>
-                );
-              })}
+          <line
+            className="stats-active-guide"
+            x1={active.x}
+            x2={active.x}
+            y1={CHART_PAD_TOP}
+            y2={baselineY}
+          />
+
+          {points.map((point, index) => (
+            <g key={`point-${point.record.week}`}>
+              {point.monthly > 0 && (
+                <circle
+                  className="stats-monthly-halo"
+                  cx={point.x}
+                  cy={point.y}
+                  r="8"
+                />
+              )}
+              <circle
+                className={
+                  "stats-point" +
+                  (point.record.week === currentWeek ? " current" : "") +
+                  (index === activeIndex ? " active" : "")
+                }
+                cx={point.x}
+                cy={point.y}
+                r={index === activeIndex ? 5 : 3}
+              />
+            </g>
+          ))}
+
+          {points.map((point, index) =>
+            index === 0 ||
+            index === points.length - 1 ||
+            index % labelStep === 0 ? (
+              <text
+                key={`label-${point.record.week}`}
+                x={point.x}
+                y={CHART_HEIGHT - 12}
+                className={
+                  "stats-x-label" +
+                  (point.record.week === currentWeek ? " current" : "")
+                }
+                textAnchor="middle"
+              >
+                {shortWeekLabel(point.record.week, spansYears)}
+              </text>
+            ) : null,
+          )}
+
+          {points.map((point, index) => (
+            <rect
+              key={`hit-${point.record.week}`}
+              className="stats-hit-area"
+              x={
+                points.length === 1
+                  ? CHART_PAD_LEFT
+                  : Math.max(
+                      CHART_PAD_LEFT,
+                      point.x - (index === 0 ? 0 : hitWidth / 2),
+                    )
+              }
+              y={CHART_PAD_TOP}
+              width={
+                points.length === 1
+                  ? innerW
+                  : index === 0 || index === points.length - 1
+                  ? hitWidth / 2
+                  : hitWidth
+              }
+              height={innerH}
+              tabIndex={0}
+              role="button"
+              aria-label={`${weekRangeLabel(point.record.week)} ${formatMeso(point.total)} 메소`}
+              onMouseEnter={() => setActiveWeek(point.record.week)}
+              onFocus={() => setActiveWeek(point.record.week)}
+              onClick={() => setActiveWeek(point.record.week)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActiveWeek(point.record.week);
+                }
+              }}
+            >
+              <title>
+                {weekRangeLabel(point.record.week)}
+                {"\n"}주간 수익 {formatMeso(point.weekly)}
+                {point.monthly > 0 &&
+                  `\n월간 보스 증가분 ${formatMeso(point.monthly)}`}
+              </title>
+            </rect>
+          ))}
         </svg>
       </div>
       <div className="stats-legend">
-        <span className="legend-chip weekly">주간 수익</span>
+        <span className="legend-chip weekly">주간 수익 흐름</span>
         {showMonthly && (
-          <span className="legend-chip monthly">월간 보스 (월 1회)</span>
+          <span className="legend-chip monthly">월간 보스 반영 주</span>
+        )}
+        {currentIndex >= 0 && (
+          <span className="legend-chip current">이번 주 집계 중</span>
         )}
         <span className="stats-hint">
-          막대에 마우스를 올리면 해당 주 상세가 표시됩니다
+          포인트에 마우스를 올리거나 탭하면 상세가 바뀝니다
         </span>
       </div>
     </div>
@@ -280,9 +457,11 @@ function RevenueChart({
 }
 
 /** "12/26" 같은 짧은 라벨 */
-function shortWeekLabel(week: string): string {
-  const [, m, d] = week.split("-").map(Number);
-  return `${m}/${d}`;
+function shortWeekLabel(week: string, includeYear = false): string {
+  const [year, month, day] = week.split("-").map(Number);
+  return includeYear
+    ? `${String(year).slice(2)}.${month}/${day}`
+    : `${month}/${day}`;
 }
 
 /** "12.3억", "1.2조" 같은 축약 표기 (Y축 눈금용) */
@@ -307,15 +486,20 @@ function BestWorst({
   records,
   monthlyDelta,
   showMonthly,
+  currentWeek,
 }: {
   records: WeekRecord[];
   monthlyDelta: ReadonlyMap<string, number>;
   showMonthly: boolean;
+  currentWeek: string;
 }) {
-  if (records.length === 0) return null;
+  const comparable = records.filter(
+    (record) => record.week !== currentWeek || record.finalized,
+  );
+  if (comparable.length === 0) return null;
   const value = (r: WeekRecord) =>
     attributedWeekRevenue(r, monthlyDelta, showMonthly);
-  const sorted = [...records].sort((a, b) => value(b) - value(a));
+  const sorted = [...comparable].sort((a, b) => value(b) - value(a));
   const top = sorted.slice(0, 3);
   const bottom = sorted.slice(-3).reverse();
   return (

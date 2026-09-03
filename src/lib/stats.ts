@@ -105,3 +105,26 @@ export function computeStatMetrics(
 export function chartWindow<T>(sortedDesc: T[], size: number): T[] {
   return sortedDesc.slice(0, size).reverse();
 }
+
+/** 차트 최댓값을 1/2/2.5/5/10 단위의 읽기 좋은 눈금으로 올림한다. */
+export function niceChartMaximum(values: number[]): number {
+  const maximum = Math.max(
+    0,
+    ...values.filter((value) => Number.isFinite(value) && value > 0),
+  );
+  if (maximum <= 0) return 1;
+
+  const magnitude = 10 ** Math.floor(Math.log10(maximum));
+  const fraction = maximum / magnitude;
+  const niceFraction =
+    fraction <= 1
+      ? 1
+      : fraction <= 2
+        ? 2
+        : fraction <= 2.5
+          ? 2.5
+          : fraction <= 5
+            ? 5
+            : 10;
+  return niceFraction * magnitude;
+}

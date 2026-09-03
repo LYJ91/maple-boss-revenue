@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WeekRecord } from "./history";
-import { chartWindow, computeStatMetrics } from "./stats";
+import { chartWindow, computeStatMetrics, niceChartMaximum } from "./stats";
 
 function rec(week: string, revenue: number, monthly = 0): WeekRecord {
   return {
@@ -73,5 +73,18 @@ describe("chartWindow", () => {
 
   it("size가 원소 수보다 크면 전체를 뒤집어 반환한다", () => {
     expect(chartWindow(["x", "y"], 5)).toEqual(["y", "x"]);
+  });
+});
+
+describe("niceChartMaximum", () => {
+  it("실제 최대값보다 크거나 같은 읽기 좋은 눈금을 만든다", () => {
+    expect(niceChartMaximum([17_837_600_000])).toBe(20_000_000_000);
+    expect(niceChartMaximum([22_000_000_000])).toBe(25_000_000_000);
+    expect(niceChartMaximum([51_000_000_000])).toBe(100_000_000_000);
+  });
+
+  it("빈 값이나 0만 있으면 안전한 기본값을 반환한다", () => {
+    expect(niceChartMaximum([])).toBe(1);
+    expect(niceChartMaximum([0, Number.NaN])).toBe(1);
   });
 });
