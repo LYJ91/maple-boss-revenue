@@ -77,6 +77,8 @@ export function UserStateProvider({
   );
   const timers = useRef<Partial<Record<SyncScope, number>>>({});
   const pending = useRef<Partial<Record<SyncScope, unknown>>>({});
+  /** scope별 저장 요청을 직렬화해 같은 revision으로 동시에 PUT하지 않게 한다. */
+  const saving = useRef<Partial<Record<SyncScope, boolean>>>({});
   const channel = useRef<BroadcastChannel | null>(null);
   const rehydrate = useRef<() => void>(() => undefined);
 
@@ -227,6 +229,8 @@ export function UserStateProvider({
       const serialized = JSON.stringify(payload);
       if (serialized === baselines.current[scope]) return;
       pending.current[scope] = payload;
+      // 저장 중 들어온 변경은 실행 중인 drain 루프가 최신 값으로 이어서 처리한다.
+      if (saving.current[scope]) return;
       if (timers.current[scope]) clearTimeout(timers.current[scope]);
       timers.current[scope] = window.setTimeout(
         () => void saveScope(scope),
@@ -280,95 +284,128 @@ export function UserStateProvider({
       window.removeEventListener(SYNC_EVENT, onChange);
       window.removeEventListener(HISTORY_EVENT, onHistory);
       window.removeEventListener("online", onOnline);
+      for (const timer of Object.values(timers.current)) {
+        if (timer) clearTimeout(timer);
+      }
       channel.current?.close();
       channel.current = null;
     };
   }, [ready, userId]);
 
   async function saveScope(scope: SyncScope) {
-    const payload = pending.current[scope];
-    if (payload == null) return;
-    setSyncStatus({ status: "saving" });
+    if (saving.current[scope]) return;
+    if (pending.current[scope] == null) return;
+    saving.current[scope] = true;
+    if (timers.current[scope]) {
+      clearTimeout(timers.current[scope]);
+      delete timers.current[scope];
+    }
+
     try {
-      const result = await putRemoteState(
-        scope,
-        payload,
-        revisions.current[scope],
-      );
-      revisions.current[scope] = result.revision;
-      baselines.current[scope] = JSON.stringify(payload);
-      delete pending.current[scope];
-      setSyncStatus({ status: "saved" });
-      channel.current?.postMessage({
-        userId,
-        scope,
-        revision: result.revision,
-        payload,
-      });
-    } catch (error) {
-      const status =
-        typeof error === "object" && error && "status" in error
-          ? error.status
-          : 0;
-      if (handleAuthenticationFailure(error)) return;
-      if (status === 409) {
-        if (scope === "todo") {
-          const remote = await getRemoteState<TodoState>("todo");
-          if (remote.exists && remote.payload) {
-            const merged = mergeTodoChecks(
-              remote.payload,
-              payload as TodoState,
-            );
-            const result = await putRemoteState(
-              "todo",
-              merged,
-              remote.revision,
-            );
-            applyCachedScope("todo", merged, result.revision);
-            delete pending.current.todo;
-            setSyncStatus({ status: "saved" });
-            channel.current?.postMessage({
-              userId,
-              scope,
-              revision: result.revision,
-              payload: merged,
-            });
-            return;
-          }
-        }
-        const force = window.confirm(
-          "다른 기기에서 같은 데이터가 변경되었습니다. 현재 기기 데이터로 덮어쓸까요?\n취소하면 서버 데이터를 다시 불러옵니다.",
-        );
-        if (force) {
+      // 저장 중 새 변경이 들어오면 pending이 교체된다. 현재 요청이 끝난 뒤
+      // 최신 payload를 새 revision으로 이어서 저장해 동일 revision 경합을 막는다.
+      while (pending.current[scope] != null) {
+        const payload = pending.current[scope];
+        const serialized = JSON.stringify(payload);
+        setSyncStatus({ status: "saving" });
+        try {
           const result = await putRemoteState(
             scope,
             payload,
             revisions.current[scope],
-            true,
           );
           revisions.current[scope] = result.revision;
-          baselines.current[scope] = JSON.stringify(payload);
-          delete pending.current[scope];
-          setSyncStatus({ status: "saved" });
+          baselines.current[scope] = serialized;
+          if (JSON.stringify(pending.current[scope]) === serialized) {
+            delete pending.current[scope];
+          }
           channel.current?.postMessage({
             userId,
             scope,
             revision: result.revision,
             payload,
           });
-        } else {
+          continue;
+        } catch (error) {
+          const status =
+            typeof error === "object" && error && "status" in error
+              ? error.status
+              : 0;
+          if (handleAuthenticationFailure(error)) return;
+          if (status !== 409) {
+            setSyncStatus({
+              status: "offline",
+              message: "연결되면 자동 재시도합니다.",
+            });
+            return;
+          }
+
+          if (scope === "todo") {
+            const remote = await getRemoteState<TodoState>("todo");
+            if (remote.exists && remote.payload) {
+              const latest = (pending.current.todo ?? payload) as TodoState;
+              const latestSerialized = JSON.stringify(latest);
+              const merged = mergeTodoChecks(remote.payload, latest);
+              const result = await putRemoteState(
+                "todo",
+                merged,
+                remote.revision,
+              );
+              revisions.current.todo = result.revision;
+              baselines.current.todo = JSON.stringify(merged);
+              if (
+                JSON.stringify(pending.current.todo) === latestSerialized
+              ) {
+                applyCachedScope("todo", merged, result.revision);
+                delete pending.current.todo;
+              }
+              channel.current?.postMessage({
+                userId,
+                scope,
+                revision: result.revision,
+                payload: merged,
+              });
+              continue;
+            }
+          }
+
+          // 직렬화 후에도 남는 409만 실제 다른 탭/기기 충돌이다.
+          const force = window.confirm(
+            "다른 탭이나 기기에서 같은 데이터가 변경되었습니다. 현재 기기 데이터로 덮어쓸까요?\n취소하면 서버 데이터를 다시 불러옵니다.",
+          );
+          if (force) {
+            const result = await putRemoteState(
+              scope,
+              payload,
+              revisions.current[scope],
+              true,
+            );
+            revisions.current[scope] = result.revision;
+            baselines.current[scope] = serialized;
+            if (JSON.stringify(pending.current[scope]) === serialized) {
+              delete pending.current[scope];
+            }
+            channel.current?.postMessage({
+              userId,
+              scope,
+              revision: result.revision,
+              payload,
+            });
+            continue;
+          }
+
           const remote = await getRemoteState(scope);
           if (remote.exists && remote.payload) {
             applyCachedScope(scope, remote.payload, remote.revision);
             delete pending.current[scope];
             setSyncStatus({ status: "saved" });
           }
+          return;
         }
-      } else
-        setSyncStatus({
-          status: "offline",
-          message: "연결되면 자동 재시도합니다.",
-        });
+      }
+      setSyncStatus({ status: "saved" });
+    } finally {
+      saving.current[scope] = false;
     }
   }
 

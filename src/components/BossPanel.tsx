@@ -33,8 +33,6 @@ interface Props {
   today: string;
   /** 현재 주기 처치 완료 `${bossId}:${difficulty}` 집합 (연동/신뢰 불가 = null) */
   clearedBossKeys: ReadonlySet<string> | null;
-  /** 보스 상세 행이 축약돼도 제공되는 주간 합계 진행도 */
-  weeklyProgress?: { done: number; total: number };
   /** 넥슨 API의 월간 보스 응답이 축약되어 재확인 중인지 */
   monthlyChecking: boolean;
   onToggle(bossId: string, difficulty: Difficulty): void;
@@ -71,7 +69,6 @@ export function BossPanel({
   summary,
   today,
   clearedBossKeys,
-  weeklyProgress,
   monthlyChecking,
   onToggle,
   onUpdateEntry,
@@ -110,8 +107,8 @@ export function BossPanel({
             주간 <strong>{formatMeso(summary?.weeklyRevenue ?? 0)}</strong> 메소
           </span>
           <span className={'chip lg' + (over12 ? ' warn' : '')}>
-            주간 보스 {weeklyProgress?.done ?? summary?.weeklyBossSelected ?? 0}/
-            {weeklyProgress?.total ?? RULES.weeklyBossSellLimitPerCharacter}
+            주간 보스 {summary?.weeklyBossSelected ?? 0}/
+            {RULES.weeklyBossSellLimitPerCharacter}
           </span>
         </div>
       </div>

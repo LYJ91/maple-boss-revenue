@@ -8,6 +8,10 @@ import {
 } from "./data/crystalData";
 import type { BossPreset } from "./data/presets";
 import { computeAccount } from "./lib/calc";
+import {
+  toggleBossSelection,
+  weeklySelectionCount,
+} from "./lib/bossSelection";
 import { loadState, saveState, type AppState } from "./lib/storage";
 import { loadTodoState } from "./lib/todoStorage";
 import {
@@ -17,7 +21,6 @@ import {
   fetchScheduler,
   schedulerReliability,
   SCHEDULER_STATE_EVENT,
-  weeklyBossProgress,
   type SchedulerStateEventDetail,
   type SchedulerState,
 } from "./lib/scheduler";
@@ -233,20 +236,6 @@ export default function App() {
       ) as Record<string, "manual" | "ready" | "checking">,
     [state.characters, schedules],
   );
-  const weeklyProgress = useMemo(
-    () =>
-      Object.fromEntries(
-        state.characters.flatMap((character) => {
-          const ocid = character.meta?.ocid;
-          const schedule = ocid ? schedules[ocid] : undefined;
-          return schedule
-            ? [[character.id, weeklyBossProgress(schedule)]]
-            : [];
-        }),
-      ) as Record<string, { done: number; total: number }>,
-    [state.characters, schedules],
-  );
-
   // 월간 응답이 축약/미수신 상태면 과거 entry를 현재 월 수익으로 계산하지 않는다.
   // entry 자체는 보존해 정상 응답이 도착했을 때만 교체한다.
   const charactersForSummary = useMemo(
@@ -509,9 +498,7 @@ export default function App() {
     const current = state.characters.find((c) => c.id === state.selectedId);
     if (current && BOSS_MAP.get(bossId)?.reset === "weekly") {
       const alreadySelected = current.entries.some((e) => e.bossId === bossId);
-      const weeklyCount = current.entries.filter(
-        (e) => BOSS_MAP.get(e.bossId)?.reset === "weekly",
-      ).length;
+      const weeklyCount = weeklySelectionCount(current);
       if (
         !alreadySelected &&
         weeklyCount >= RULES.weeklyBossSellLimitPerCharacter
@@ -521,28 +508,9 @@ export default function App() {
       }
     }
 
-    updateSelected((c) => {
-      const existing = c.entries.find((e) => e.bossId === bossId);
-      if (existing && existing.difficulty === difficulty) {
-        // 같은 난이도를 다시 누르면 해제 (파티 인원 선호는 유지)
-        return { ...c, entries: c.entries.filter((e) => e.bossId !== bossId) };
-      }
-      const boss = BOSS_MAP.get(bossId);
-      const requestedPartySize =
-        c.partyPrefs?.[bossId] ?? existing?.partySize ?? 1;
-      const entry: BossEntry = {
-        bossId,
-        difficulty,
-        partySize: boss
-          ? clampPartySize(boss, difficulty, requestedPartySize)
-          : 1,
-        clearsPerWeek: existing?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
-      };
-      const entries = existing
-        ? c.entries.map((e) => (e.bossId === bossId ? entry : e))
-        : [...c.entries, entry];
-      return { ...c, entries };
-    });
+    updateSelected((character) =>
+      toggleBossSelection(character, bossId, difficulty),
+    );
   };
 
   const applyPreset = (preset: BossPreset) => {
@@ -665,7 +633,6 @@ export default function App() {
             <CharacterSidebar
               characters={state.characters}
               summaries={summary.characters}
-              weeklyProgress={weeklyProgress}
               monthlySyncStatus={monthlySyncStatus}
               selectedId={state.selectedId}
               onAdd={addCharacter}
@@ -681,7 +648,6 @@ export default function App() {
                   summary={selectedSummary}
                   today={today}
                   clearedBossKeys={clearedBossKeys}
-                  weeklyProgress={weeklyProgress[selected.id]}
                   monthlyChecking={
                     monthlySyncStatus[selected.id] === "checking"
                   }
