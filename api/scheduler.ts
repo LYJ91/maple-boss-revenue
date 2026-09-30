@@ -1,6 +1,7 @@
 ﻿import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { requireUser, authError } from "./_lib/auth.js";
 import { getNexonKey } from "./_lib/nexon.js";
+import { mapSchedulerPayload } from "./_lib/schedulerFetch.js";
 
 const NEXON_BASE = "https://open.api.nexon.com/maplestory/v1";
 
@@ -65,25 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .status(nexonRes.status)
         .json({ error: schedulerErrorMessage(nexonRes.status) });
     const data = (await nexonRes.json()) as NexonSchedulerState;
-    return res.status(200).json({
-      date: data.date,
-      weeklyBossClearCount: data.weekly_boss_clear_count,
-      weeklyBossClearLimit: data.weekly_boss_clear_limit_count,
-      bosses: (data.boss_contents ?? []).map((b) => ({
-        name: b.content_name,
-        difficulty: b.difficulty,
-        cycle: b.cycle,
-        complete: b.complete_flag === "true",
-      })),
-      contents: (data.weekly_contents ?? [])
-        .filter((c) => c.type === "contents")
-        .map((c) => ({
-          name: c.content_name,
-          nowCount: c.now_count,
-          maxCount: c.max_count,
-          registered: c.registration_flag === "true",
-        })),
-    });
+    return res.status(200).json(mapSchedulerPayload(data));
   } catch (error) {
     const e = authError(error);
     return res.status(e.status).json({ error: e.message });

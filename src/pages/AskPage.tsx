@@ -1,81 +1,49 @@
 import { useRef, useState } from "react";
-import { BOSS_MAP } from "../data/crystalData";
-import type { AskPlan } from "../lib/ask";
-import { requestAskPlan } from "../lib/askRemote";
-import { runAsk, type AskResult } from "../lib/askRun";
-import type { AccountSummary } from "../lib/calc";
-import { searchCharacter } from "../lib/nexon";
-import { fetchScheduler } from "../lib/scheduler";
+import { requestAskAnswer } from "../lib/askRemote";
 import type { Character } from "../types";
-
-const TOOL_LABEL = {
-  characterBasic: "캐릭터 기본",
-  revenue: "수익",
-  weeklyClear: "보스 격파",
-} as const;
 
 interface Props {
   characters: Character[];
   connectedAccountIds: string[];
-  summary: AccountSummary;
   today: string;
 }
 
-export function AskPage({
-  characters,
-  connectedAccountIds,
-  summary,
-  today,
-}: Props) {
+export function AskPage({ characters, connectedAccountIds, today }: Props) {
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
-  const [plan, setPlan] = useState<AskPlan | null>(null);
-  const [result, setResult] = useState<AskResult | null>(null);
+  const [answer, setAnswer] = useState<string | null>(null);
   const requestId = useRef(0);
   const accounts = new Set(connectedAccountIds);
-  const askCharacters = characters.map((character) => ({
-    id: character.id,
-    name: character.name,
-    ocid: character.meta?.ocid,
-    accountId:
-      character.meta?.accountId && accounts.has(character.meta.accountId)
-        ? character.meta.accountId
-        : undefined,
-  }));
-  const expExample = characters[0]
-    ? `${characters[0].name} 경험치`
-    : "내 캐릭터 경험치";
 
-  const submit = (text: string) => {
-    const trimmed = text.trim();
+  const submit = () => {
+    const trimmed = question.trim();
     if (!trimmed || pending) return;
-    setQuestion(trimmed);
     const id = requestId.current + 1;
     requestId.current = id;
     setPending(true);
-    void requestAskPlan(trimmed, { characters: askCharacters, today })
-      .then((nextPlan) =>
-        runAsk(nextPlan, {
-          searchCharacter,
-          fetchScheduler,
-          summary,
-          bossMap: BOSS_MAP,
-          today,
-        }).then((next) => ({ nextPlan, next })),
-      )
-      .then(({ nextPlan, next }) => {
+    setAnswer(null);
+    void requestAskAnswer({
+      question: trimmed,
+      today,
+      characters: characters.map((character) => ({
+        id: character.id,
+        name: character.name,
+        ocid: character.meta?.ocid,
+        accountId:
+          character.meta?.accountId && accounts.has(character.meta.accountId)
+            ? character.meta.accountId
+            : undefined,
+        partyPrefs: character.partyPrefs,
+      })),
+    })
+      .then((text) => {
         if (requestId.current !== id) return;
-        setPlan(nextPlan);
-        setResult(next);
+        setAnswer(text);
         setPending(false);
       })
       .catch((error: unknown) => {
         if (requestId.current !== id) return;
-        setPlan(null);
-        setResult({
-          kind: "refuse",
-          reason: error instanceof Error ? error.message : "질의에 실패했습니다.",
-        });
+        setAnswer(error instanceof Error ? error.message : "질의에 실패했습니다.");
         setPending(false);
       });
   };
@@ -84,8 +52,8 @@ export function AskPage({
     <div className="empty-board lookup-page">
       <h2>질의</h2>
       <p>
-        경험치·레벨·직업·월드, 이번 주 수익, 연동 캐릭터의 보스 격파만 조회합니다.
-        질문은 Gemini가 도구를 고르고, 그 밖은 불가능하다고 답합니다.
+        질문을 보내면 필요한 메이플 조회와 결정석 계산을 한 뒤, 그 결과로 답을 만듭니다.
+        조회할 수 없으면 그렇게 알려 줍니다.
       </p>
       <div className="search-row lookup-search">
         <input
@@ -94,48 +62,19 @@ export function AskPage({
           placeholder="질문을 입력하세요"
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") submit(question);
+            if (event.key === "Enter") submit();
           }}
         />
         <button
           className="btn primary"
           type="button"
           disabled={pending || !question.trim()}
-          onClick={() => submit(question)}
+          onClick={submit}
         >
           {pending ? "조회 중" : "전송"}
         </button>
       </div>
-      <div className="preset-chips">
-        <button className="btn ghost" type="button" onClick={() => submit(expExample)}>
-          {expExample}
-        </button>
-        <button className="btn ghost" type="button" onClick={() => submit("이번 주 수익")}>
-          이번 주 수익
-        </button>
-        <button
-          className="btn ghost"
-          type="button"
-          onClick={() => submit("창고에 메소 얼마 있어?")}
-        >
-          창고에 메소 얼마 있어?
-        </button>
-      </div>
-      {result?.kind === "value" && plan?.kind === "call" && (
-        <div className="notice info">
-          <div>
-            도구 {TOOL_LABEL[result.tool]} · {result.args}
-          </div>
-          {result.rows.map((row) => (
-            <div key={row.label}>
-              {row.label}: {row.value}
-            </div>
-          ))}
-        </div>
-      )}
-      {result?.kind === "refuse" && (
-        <div className="notice warn">불가능. {result.reason}</div>
-      )}
+      {answer && <div className="notice info">{answer}</div>}
     </div>
   );
 }

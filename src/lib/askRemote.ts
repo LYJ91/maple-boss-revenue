@@ -1,24 +1,24 @@
-import type { AskContext, AskPlan } from "./ask";
 import { authRequest } from "./sync";
 
-function isPlan(value: unknown): value is AskPlan {
-  if (!value || typeof value !== "object") return false;
-  const kind = (value as { kind?: unknown }).kind;
-  return kind === "call" || kind === "refuse";
+export interface AskRequestCharacter {
+  id: string;
+  name: string;
+  ocid?: string;
+  accountId?: string;
+  partyPrefs?: Record<string, number>;
 }
 
-export async function requestAskPlan(
-  question: string,
-  context: AskContext,
-): Promise<AskPlan> {
-  const body = await authRequest<unknown>("/api/ask", {
+export async function requestAskAnswer(input: {
+  question: string;
+  today: string;
+  characters: AskRequestCharacter[];
+}): Promise<string> {
+  const body = await authRequest<{ answer?: unknown }>("/api/ask", {
     method: "POST",
-    body: JSON.stringify({
-      question,
-      characters: context.characters,
-      today: context.today,
-    }),
+    body: JSON.stringify(input),
   });
-  if (!isPlan(body)) throw new Error("질의 응답 형식이 올바르지 않습니다.");
-  return body;
+  if (typeof body.answer !== "string" || !body.answer.trim()) {
+    throw new Error("질의 응답 형식이 올바르지 않습니다.");
+  }
+  return body.answer;
 }

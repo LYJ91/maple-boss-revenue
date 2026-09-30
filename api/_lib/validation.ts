@@ -1,4 +1,5 @@
 ﻿import { z } from "zod";
+import { RULES } from "../../src/data/crystalData.js";
 
 export const scopeSchema = z.enum(["calculator", "todo"]);
 export const statePutSchema = z.object({
@@ -42,8 +43,18 @@ export function bodyWithinLimit(body: unknown, maxBytes = 1_000_000): boolean {
 const askCharacterSchema = z.object({
   id: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(20),
-  ocid: z.string().trim().min(1).max(80).optional(),
+  ocid: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{8,100}$/)
+    .optional(),
   accountId: z.string().trim().min(1).max(80).optional(),
+  partyPrefs: z
+    .record(
+      z.string().trim().min(1).max(80),
+      z.number().int().min(1).max(RULES.maxPartySize),
+    )
+    .optional(),
 });
 
 export const askRequestSchema = z.object({

@@ -1,22 +1,7 @@
-import type { Boss, BossEntry, BossVariant, Character } from '../types';
-import { clampPartySize, RULES } from '../data/crystalData';
+import type { Boss, BossEntry, Character } from '../types';
+import { clampPartySize, crystalValue, priceAt, RULES } from '../data/crystalData';
 
-/** 조회 시점(dateISO) 기준으로 적용 중인 결정석 가격을 반환 */
-export function priceAt(variant: BossVariant, dateISO: string): number {
-  let current: { price: number; since: string } | undefined;
-  for (const point of variant.prices) {
-    if (point.since <= dateISO && (!current || point.since > current.since)) {
-      current = point;
-    }
-  }
-  // 모든 가격이 미래 발효라면(비정상 데이터) 가장 이른 가격을 사용
-  return (current ?? variant.prices[0]).price;
-}
-
-/** 파티 인원수에 따른 1인당 결정석 가격 (1/n, 소수점 버림) */
-export function crystalValue(price: number, partySize: number): number {
-  return Math.floor(price / Math.max(1, partySize));
-}
+export { crystalValue, priceAt };
 
 export interface CharacterSummary {
   id: string;

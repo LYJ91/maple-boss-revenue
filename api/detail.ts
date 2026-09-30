@@ -1,36 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-const NEXON_BASE = 'https://open.api.nexon.com/maplestory/v1';
-
-/** 조회 가능한 파트 화이트리스트 (part 이름 → 넥슨 API 경로) */
-const PARTS: Record<string, string> = {
-  basic: '/character/basic',
-  popularity: '/character/popularity',
-  stat: '/character/stat',
-  'hyper-stat': '/character/hyper-stat',
-  propensity: '/character/propensity',
-  ability: '/character/ability',
-  item: '/character/item-equipment',
-  cash: '/character/cashitem-equipment',
-  symbol: '/character/symbol-equipment',
-  'set-effect': '/character/set-effect',
-  beauty: '/character/beauty-equipment',
-  android: '/character/android-equipment',
-  pet: '/character/pet-equipment',
-  'link-skill': '/character/link-skill',
-  vmatrix: '/character/vmatrix',
-  hexamatrix: '/character/hexamatrix',
-  'hexa-stat': '/character/hexamatrix-stat',
-  dojang: '/character/dojang',
-  union: '/user/union',
-  'union-raider': '/user/union-raider',
-  'union-artifact': '/user/union-artifact',
-  'union-champion': '/user/union-champion',
-};
-
-/** 개발 단계 키의 초당 5건 제한을 지키기 위한 동시 호출 묶음 크기 */
-const CHUNK_SIZE = 4;
-const CHUNK_INTERVAL_MS = 1100;
+import { CHUNK_INTERVAL_MS, CHUNK_SIZE, fetchCharacterPart, PARTS } from './_lib/nexonSite.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,15 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!key) {
     return res.status(500).json({ error: '서버에 API 키가 설정되지 않았습니다.' });
   }
-  const headers = { 'x-nxopen-api-key': key };
 
   const fetchPart = async (part: string): Promise<[string, unknown]> => {
     try {
-      const r = await fetch(`${NEXON_BASE}${PARTS[part]}?ocid=${ocid}`, { headers });
-      if (!r.ok) {
-        return [part, { error: `조회 실패 (${r.status})` }];
-      }
-      return [part, await r.json()];
+      return [part, await fetchCharacterPart(ocid, part, key)];
     } catch {
       return [part, { error: '네트워크 오류' }];
     }

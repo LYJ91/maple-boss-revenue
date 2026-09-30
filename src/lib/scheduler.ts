@@ -12,29 +12,24 @@ import {
   RULES,
 } from "../data/crystalData";
 import { authRequest } from "./sync";
+import {
+  bossKey,
+  completedBossKeys,
+  normalizeName,
+  schedulerReliability,
+  type SchedulerState,
+} from "./schedulerMatch";
 
-export interface SchedulerBoss {
-  name: string;
-  difficulty: string;
-  /** bossWeekly | bossMonthly */
-  cycle: string;
-  complete: boolean;
-}
-
-export interface SchedulerContent {
-  name: string;
-  nowCount: number;
-  maxCount: number;
-  registered: boolean;
-}
-
-export interface SchedulerState {
-  date: string | null;
-  weeklyBossClearCount: number;
-  weeklyBossClearLimit: number;
-  bosses: SchedulerBoss[];
-  contents: SchedulerContent[];
-}
+export {
+  bossKey,
+  completedBossKeys,
+  normalizeName,
+  schedulerReliability,
+  type SchedulerBoss,
+  type SchedulerContent,
+  type SchedulerReliability,
+  type SchedulerState,
+} from "./schedulerMatch";
 
 export const SCHEDULER_STATE_EVENT = "maple:scheduler-state";
 
@@ -42,38 +37,6 @@ export interface SchedulerStateEventDetail {
   ocid: string;
   accountId: string;
   state: SchedulerState;
-}
-
-export interface SchedulerReliability {
-  /** 주간 보스 행이 있어 전체 보스 응답으로 신뢰할 수 있음 */
-  weeklyBosses: boolean;
-  /** 월간 완료=true가 있거나, 전체 응답에서 월간 미완료를 확인할 수 있음 */
-  monthlyBosses: boolean;
-  /** 미접속 캐릭터에서 관측되는 월간 보스 2행뿐인 축약 응답 */
-  truncated: boolean;
-}
-
-/**
- * 넥슨 스케줄러가 미접속 캐릭터에 월간 보스 미완료 2행만 주는 경우를 감지한다.
- * 이런 응답을 완료 상태의 근거로 쓰면 기존 주간/월간 기록이 모두 사라진다.
- */
-export function schedulerReliability(
-  state: SchedulerState,
-): SchedulerReliability {
-  const weeklyBosses = state.bosses.some((b) => b.cycle === "bossWeekly");
-  const hasMonthlyBosses = state.bosses.some(
-    (b) => b.cycle === "bossMonthly",
-  );
-  const hasCompletedMonthlyBoss = state.bosses.some(
-    (b) => b.cycle === "bossMonthly" && b.complete,
-  );
-  return {
-    weeklyBosses,
-    // 축약 응답의 false는 신뢰하지 않지만 true는 완료의 직접 증거로 사용한다.
-    monthlyBosses:
-      hasCompletedMonthlyBoss || (weeklyBosses && hasMonthlyBosses),
-    truncated: state.bosses.length > 0 && !weeklyBosses && hasMonthlyBosses,
-  };
 }
 
 function publishSchedulerState(detail: SchedulerStateEventDetail): void {
@@ -157,43 +120,6 @@ export async function fetchScheduler(
     .finally(() => inflight.delete(cacheKey));
   inflight.set(cacheKey, promise);
   return promise;
-}
-
-/* ───── 넥슨 보스명 → 앱 보스 id 매핑 ───── */
-
-/** 공백 차이("블러디퀸" vs "블러디 퀸")를 흡수하기 위한 정규화 */
-function normalizeName(name: string): string {
-  return name.replace(/\s+/g, "");
-}
-
-/** 정규화된 보스명+주기 → 앱 보스 id (주간/월간 보스만) */
-const BOSS_ID_BY_NAME: ReadonlyMap<string, string> = new Map(
-  BOSSES.filter((b) => b.reset === "weekly" || b.reset === "monthly").map(
-    (b) => [`${b.reset}:${normalizeName(b.name)}`, b.id],
-  ),
-);
-
-export function bossKey(
-  bossId: string,
-  difficulty: Difficulty | string,
-): string {
-  return `${bossId}:${difficulty}`;
-}
-
-/**
- * 이번 주(월간 보스는 이번 달)에 처치 완료된 보스를
- * `${앱 보스 id}:${난이도}` 키 집합으로 반환한다.
- * 앱에 없는 보스(시즌 보스 등)는 무시된다.
- */
-export function completedBossKeys(state: SchedulerState): Set<string> {
-  const keys = new Set<string>();
-  for (const b of state.bosses) {
-    if (!b.complete) continue;
-    const reset = b.cycle === "bossMonthly" ? "monthly" : "weekly";
-    const bossId = BOSS_ID_BY_NAME.get(`${reset}:${normalizeName(b.name)}`);
-    if (bossId) keys.add(bossKey(bossId, b.difficulty));
-  }
-  return keys;
 }
 
 /* ───── 처치 내역 → 보스 선택(entries) 자동 반영 ───── */

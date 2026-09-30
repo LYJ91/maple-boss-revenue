@@ -991,7 +991,6 @@ export default function App() {
         <AskPage
           characters={state.characters}
           connectedAccountIds={todo.accounts.map((account) => account.id)}
-          summary={summary}
           today={today}
         />
       ) : route.view === "potential" ? (

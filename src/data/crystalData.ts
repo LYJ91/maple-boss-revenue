@@ -1,4 +1,4 @@
-import type { Boss, Difficulty, ResetType } from '../types';
+import type { Boss, BossVariant, Difficulty, ResetType } from '../types';
 
 /**
  * 결정석 가격 데이터
@@ -51,6 +51,22 @@ export const RESET_LABEL: Record<ResetType, string> = {
   weekly: '주간',
   monthly: '월간',
 };
+
+/** 조회 시점(dateISO) 기준으로 적용 중인 결정석 가격을 반환 */
+export function priceAt(variant: BossVariant, dateISO: string): number {
+  let current: { price: number; since: string } | undefined;
+  for (const point of variant.prices) {
+    if (point.since <= dateISO && (!current || point.since > current.since)) {
+      current = point;
+    }
+  }
+  return (current ?? variant.prices[0]).price;
+}
+
+/** 파티 인원수에 따른 1인당 결정석 가격 (1/n, 소수점 버림) */
+export function crystalValue(price: number, partySize: number): number {
+  return Math.floor(price / Math.max(1, partySize));
+}
 
 /** 직전 일괄 조정일 (6/18 공지에서 변동이 없었던 가격의 기준일) */
 const PREV = '2025-10-23';
