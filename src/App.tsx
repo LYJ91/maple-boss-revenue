@@ -86,7 +86,9 @@ import { CharacterPage } from "./pages/CharacterPage";
 import { TodoPage } from "./pages/TodoPage";
 import { StatsPage } from "./pages/StatsPage";
 import { PotentialPage } from "./pages/PotentialPage";
+import { AskPage } from "./pages/AskPage";
 import {
+  gotoAsk,
   gotoPotential,
   gotoCharacter,
   gotoHome,
@@ -165,12 +167,13 @@ function HeaderSearch() {
   );
 }
 
-type MainTab = "calc" | "equip" | "todo" | "stats" | "potential";
+type MainTab = "calc" | "equip" | "todo" | "stats" | "potential" | "ask";
 
 function activeTab(route: Route): MainTab {
   if (route.view === "todo") return "todo";
   if (route.view === "stats") return "stats";
   if (route.view === "potential") return "potential";
+  if (route.view === "ask") return "ask";
   if (route.view === "character" || route.view === "lookup") return "equip";
   return "calc";
 }
@@ -181,6 +184,7 @@ function MainNav({ route }: { route: Route }) {
     { key: "todo", label: "체크리스트", go: gotoTodo },
     { key: "calc", label: "보스수익", go: gotoHome },
     { key: "stats", label: "수익 통계", go: gotoStats },
+    { key: "ask", label: "질의", go: gotoAsk },
     { key: "potential", label: "장비잠재", go: gotoPotential },
     { key: "equip", label: "장비확인", go: gotoLookup },
   ];
@@ -983,6 +987,13 @@ export default function App() {
         />
       ) : route.view === "stats" ? (
         <StatsPage records={visibleHistory(history)} />
+      ) : route.view === "ask" ? (
+        <AskPage
+          characters={state.characters}
+          connectedAccountIds={todo.accounts.map((account) => account.id)}
+          summary={summary}
+          today={today}
+        />
       ) : route.view === "potential" ? (
         <PotentialPage characters={state.characters} />
       ) : (

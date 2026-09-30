@@ -8,6 +8,10 @@ export interface LookupCharacter {
   job: string;
   level: number;
   image?: string;
+  /** 넥슨 character/basic 의 현재 레벨 경험치 */
+  exp?: number;
+  /** 넥슨 character/basic 의 경험치 비율. 원문 그대로의 문자열 */
+  expRate?: string;
 }
 
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {

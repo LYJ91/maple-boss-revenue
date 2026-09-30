@@ -6,6 +6,7 @@ export type Route =
   | { view: "todo" }
   | { view: "stats" }
   | { view: "potential" }
+  | { view: "ask" }
   | { view: "character"; name: string; tab?: string };
 
 function parse(): Route {
@@ -25,6 +26,7 @@ function parse(): Route {
   if (hash.startsWith("#/stats")) return { view: "stats" };
   if (hash.startsWith("#/potential") || hash.startsWith("#/bosses"))
     return { view: "potential" };
+  if (hash.startsWith("#/ask")) return { view: "ask" };
   // 기본 랜딩은 체크리스트
   return { view: "todo" };
 }
@@ -61,4 +63,8 @@ export function gotoStats() {
 
 export function gotoPotential() {
   window.location.hash = "#/potential";
+}
+
+export function gotoAsk() {
+  window.location.hash = "#/ask";
 }

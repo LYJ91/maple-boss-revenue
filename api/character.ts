@@ -41,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 같은 캐릭터 재검색 시 넥슨 호출을 아끼기 위해 CDN 캐시 1시간
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+    const expRaw = basic.character_exp;
+    const rateRaw = basic.character_exp_rate;
     return res.status(200).json({
       ocid,
       name: basic.character_name,
@@ -48,6 +50,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       job: basic.character_class,
       level: basic.character_level,
       image: basic.character_image,
+      ...(typeof expRaw === "number" && Number.isFinite(expRaw)
+        ? { exp: expRaw }
+        : {}),
+      ...(rateRaw != null && rateRaw !== "" ? { expRate: String(rateRaw) } : {}),
     });
   } catch {
     return res.status(502).json({ error: '넥슨 API 호출에 실패했습니다. 잠시 후 다시 시도해주세요.' });
