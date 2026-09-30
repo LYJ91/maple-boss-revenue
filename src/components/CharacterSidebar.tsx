@@ -1,5 +1,6 @@
 import type { Character } from '../types';
 import type { CharacterSummary } from '../lib/calc';
+import type { WeeklyVerification } from '../lib/bossConflict';
 import { BOSSES, RULES } from '../data/crystalData';
 import { formatMeso } from '../lib/format';
 import { CharacterAvatar } from './CharacterAvatar';
@@ -9,6 +10,8 @@ export type MonthlySyncStatus = 'manual' | 'ready' | 'checking';
 interface Props {
   characters: Character[];
   summaries: CharacterSummary[];
+  /** 캐릭터 id → 내 선택과 API 처치 내역의 대조 결과 */
+  verifications: Record<string, WeeklyVerification>;
   monthlySyncStatus: Record<string, MonthlySyncStatus>;
   selectedId: string | null;
   onAdd(): void;
@@ -21,6 +24,7 @@ interface Props {
 export function CharacterSidebar({
   characters,
   summaries,
+  verifications,
   monthlySyncStatus,
   selectedId,
   onAdd,
@@ -67,6 +71,10 @@ export function CharacterSidebar({
           const over12 =
             (s?.weeklyBossSelected ?? 0) > RULES.weeklyBossSellLimitPerCharacter;
           const monthlySelected = s?.monthlyBossSelected ?? 0;
+          const verification = verifications[character.id];
+          const unverifiedCount = verification?.reliable
+            ? verification.unverified.length
+            : 0;
           const monthlyChecking =
             monthlySyncStatus[character.id] === 'checking';
           return (
@@ -126,6 +134,14 @@ export function CharacterSidebar({
                   주간 보스 {s?.weeklyBossSelected ?? 0}/
                   {RULES.weeklyBossSellLimitPerCharacter}
                 </span>
+                {unverifiedCount > 0 && (
+                  <span
+                    className="chip warn"
+                    title={`넥슨 API가 확인한 주간 보스는 ${verification!.apiCount}개입니다. 내 선택 중 ${unverifiedCount}개는 확인되지 않았습니다.`}
+                  >
+                    API 미확인 {unverifiedCount}
+                  </span>
+                )}
                 {monthlyBossTotal > 0 && (
                   <span
                     className={

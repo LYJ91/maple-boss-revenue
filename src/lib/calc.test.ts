@@ -45,6 +45,47 @@ describe('priceAt', () => {
       ),
     ).toBe(2_950_000_000);
   });
+
+  it('9/17 주간 조정과 10/1 검마 조정이 발효일에 맞춰 적용된다', () => {
+    const zakum = BOSS_MAP.get('zakum-weekly')!;
+    const lotus = BOSS_MAP.get('lotus')!;
+    const seren = BOSS_MAP.get('seren')!;
+    const kalos = BOSS_MAP.get('kalos')!;
+    const bm = BOSS_MAP.get('black-mage')!;
+    expect(
+      priceAt(zakum.variants.find((v) => v.difficulty === 'chaos')!, '2026-09-16'),
+    ).toBe(8_080_000);
+    expect(
+      priceAt(zakum.variants.find((v) => v.difficulty === 'chaos')!, '2026-09-17'),
+    ).toBe(4_040_000);
+    expect(
+      priceAt(lotus.variants.find((v) => v.difficulty === 'hard')!, '2026-09-16'),
+    ).toBe(51_500_000);
+    expect(
+      priceAt(lotus.variants.find((v) => v.difficulty === 'hard')!, '2026-09-17'),
+    ).toBe(48_900_000);
+    expect(
+      priceAt(
+        seren.variants.find((v) => v.difficulty === 'extreme')!,
+        '2026-09-17',
+      ),
+    ).toBe(1_840_000_000);
+    expect(
+      priceAt(
+        kalos.variants.find((v) => v.difficulty === 'extreme')!,
+        '2026-09-17',
+      ),
+    ).toBe(4_104_000_000);
+    expect(
+      priceAt(bm.variants.find((v) => v.difficulty === 'hard')!, '2026-09-17'),
+    ).toBe(665_000_000);
+    expect(
+      priceAt(bm.variants.find((v) => v.difficulty === 'hard')!, '2026-10-01'),
+    ).toBe(465_000_000);
+    expect(
+      priceAt(bm.variants.find((v) => v.difficulty === 'extreme')!, '2026-10-01'),
+    ).toBe(5_680_000_000);
+  });
 });
 
 describe('crystalValue', () => {

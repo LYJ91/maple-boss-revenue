@@ -151,6 +151,17 @@ body {
   font-size: 13px;
 }
 
+.btn.warn-chip {
+  background: var(--warn-bg);
+  border-color: rgba(255, 107, 107, 0.35);
+  color: #ff9a9a;
+  font-weight: 600;
+}
+
+.btn.warn-chip:hover {
+  border-color: var(--danger);
+}
+
 /* ───── 요약 카드 ───── */
 .summary {
   display: grid;
@@ -782,6 +793,20 @@ body {
   vertical-align: 1px;
 }
 
+/* 선택했지만 API 처치 내역에 없는 보스 */
+.unverified-tag {
+  display: inline-block;
+  margin-left: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #ff9a9a;
+  background: var(--warn-bg);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: 999px;
+  padding: 1px 7px;
+  vertical-align: 1px;
+}
+
 .pill .cleared-dot {
   margin-left: 4px;
   font-size: 10.5px;
@@ -1161,6 +1186,81 @@ body {
 
 .modal-body .dim {
   color: var(--text-dim);
+}
+
+/* ───── 내 선택 vs API 비교 모달 ───── */
+.conflict-modal {
+  width: min(640px, 100%);
+}
+
+.conflict-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 14px;
+  padding-right: 4px;
+}
+
+.conflict-row {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.conflict-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conflict-counts {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.conflict-bosses {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.conflict-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff9a9a;
+  background: var(--warn-bg);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.conflict-boss-names {
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.conflict-note {
+  margin: 2px 0 0;
+}
+
+.conflict-actions,
+.conflict-bulk {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.conflict-bulk {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 13px;
 }
 
 /* ───── 캐릭터 불러오기 모달 ───── */
@@ -2412,6 +2512,28 @@ body {
 .todo-cell.auto {
   cursor: default;
   gap: 7px;
+}
+
+/* 보스수익의 보스 선택과 같은 값 — 클릭하면 그 탭에서 수정 */
+.todo-cell.auto.linked {
+  cursor: pointer;
+}
+
+.todo-cell.auto.linked:hover {
+  border-color: var(--accent);
+}
+
+/* API가 확인해주지 않은 보스가 섞여 있으면 숫자만 믿지 않게 표시한다 */
+.todo-cell.auto.unverified {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: var(--warn-bg);
+}
+
+.todo-unverified {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #ff9a9a;
+  font-variant-numeric: tabular-nums;
 }
 
 .todo-count {

@@ -1,7 +1,7 @@
 /**
  * 주간 수익 기록.
  * - 이번 주: 사이트 접속 시 실시간 스케줄러로 계속 갱신 (finalized=false)
- * - 지난 주: API로 한 번 확정하면 finalized=true 로 잠그고 재조회하지 않음
+ * - 지난 주: 주차별 스냅샷과 API 완료를 합쳐 확정하면 finalized=true 로 잠근다
  */
 
 import { weekKey } from "./week";

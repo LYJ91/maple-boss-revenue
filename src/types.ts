@@ -46,6 +46,13 @@ export interface CharacterMeta {
   accountId?: string;
 }
 
+/**
+ * 주차별 보스 판정 결정.
+ * - manual: API가 미처치로 줘도 내 선택을 유지한다 (다시 묻지 않는다)
+ * - excluded: API가 처치로 줘도 다시 추가하지 않는다
+ */
+export type WeeklyDecision = "manual" | "excluded";
+
 export interface Character {
   id: string;
   name: string;
@@ -56,6 +63,28 @@ export interface Character {
    * 주간 처치 기록이 리셋돼도 유지되며, API로 보스가 다시 선택될 때 적용된다.
    */
   partyPrefs?: Record<string, number>;
+  /**
+   * 주간 보스 선택을 확정한 주차 (목요일 YYYY-MM-DD).
+   * 같은 주의 API 미완료/축약 응답으로 수동·기존 선택을 지우지 않는다.
+   */
+  weeklyConfirmedWeek?: string;
+  /**
+   * 주차별 주간 보스 스냅샷 (목요일 키 → entries).
+   * 지난 주 수익 확정과 목요일 리셋 후에도 그 주 수동·API 선택을 남긴다.
+   */
+  weeklyByWeek?: Record<string, BossEntry[]>;
+  /**
+   * 주차별 보스 판정 결정 (목요일 키 → bossId → 결정).
+   * 한 번 결정한 충돌은 같은 주에 다시 묻지 않는다.
+   */
+  weeklyDecisions?: Record<string, Record<string, WeeklyDecision>>;
+  /**
+   * 월간 보스 완료를 확정한 달 (YYYY-MM).
+   * 같은 달의 축약/미완료 응답으로 완료 기록을 지우지 않는다.
+   */
+  monthlyConfirmedMonth?: string;
+  /** 이번 달 과거 일자 복구를 이미 시도한 달 (YYYY-MM) */
+  monthlyScanMonth?: string;
 }
 
 /* ───── 주간 체크리스트 ───── */

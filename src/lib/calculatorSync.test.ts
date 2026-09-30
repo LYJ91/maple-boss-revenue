@@ -72,4 +72,60 @@ describe("pushMergedCalculator", () => {
     expect(outcome.revision).toBe(3);
     expect(outcome.state.characters[0].entries[0].partySize).toBe(4);
   });
+
+  it("기준이 없으면 로컬에만 있는 보스를 넣어 저장한다", async () => {
+    const local = state(1, 200);
+    local.characters[0].entries.push({
+      bossId: "will",
+      difficulty: "hard",
+      partySize: 3,
+      clearsPerWeek: 7,
+    });
+    const remote = state(4, 200);
+    const puts: AppState[] = [];
+    const outcome = await pushMergedCalculator({
+      base: null,
+      local,
+      remote: { revision: 2, state: remote },
+      getRemote: async () => {
+        throw new Error("조회하지 않아야 한다");
+      },
+      put: async (next) => {
+        puts.push(next);
+        return { revision: 3 };
+      },
+    });
+    expect(puts).toHaveLength(1);
+    expect(puts[0].characters[0].entries.map((entry) => entry.bossId)).toEqual([
+      "lotus",
+      "will",
+    ]);
+    expect(outcome.pushed).toBe(true);
+    expect(outcome.revision).toBe(3);
+  });
+
+  it("409 재시도는 직전 원격 문서를 기준으로 삼는다", async () => {
+    const base = state(1, 200);
+    const local = state(1, 210);
+    const firstRemote = state(4, 200);
+    const secondRemote = state(4, 200);
+    secondRemote.characters[0].name = "원격";
+    let sawRetryBase = false;
+    await pushMergedCalculator({
+      base,
+      local,
+      remote: { revision: 6, state: firstRemote },
+      getRemote: async () => ({ revision: 7, state: secondRemote }),
+      put: async (next, revision) => {
+        if (revision === 7) {
+          sawRetryBase = next.characters[0].name === "원격";
+        }
+        if (revision === 6) {
+          throw Object.assign(new Error("conflict"), { status: 409 });
+        }
+        return { revision: revision + 1 };
+      },
+    });
+    expect(sawRetryBase).toBe(true);
+  });
 });

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canQueryNexonDate, shiftWeek, weekEndDate, weekKey } from "./week";
+import {
+  canQueryNexonDate,
+  monthKey,
+  nexonLookbackDates,
+  shiftWeek,
+  weekEndDate,
+  weekKey,
+} from "./week";
 
 describe("weekKey", () => {
   // 2026-07-07은 화요일
@@ -47,5 +54,12 @@ describe("week helpers", () => {
     expect(canQueryNexonDate("2026-07-03", now)).toBe(true);
     expect(canQueryNexonDate("2026-07-02", now)).toBe(false); // 14일 전
     expect(canQueryNexonDate("2026-07-16", now)).toBe(false); // 오늘
+  });
+
+  it("monthKey와 과거 조회 날짜는 이번 달만 걸러낼 수 있다", () => {
+    expect(monthKey("2026-09-08")).toBe("2026-09");
+    const dates = nexonLookbackDates("2026-09-08");
+    expect(dates[0]).toBe("2026-09-07");
+    expect(dates.every((date) => date < "2026-09-08")).toBe(true);
   });
 });

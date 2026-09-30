@@ -10,15 +10,18 @@ import type { Boss, Difficulty, ResetType } from '../types';
  * 신규 보스 벨로나: 메이플스토리 2026-08-20 업데이트 공지
  *   https://maplestory.nexon.com/news/update/811
  *   - 결정 가격은 게임 내 NPC 콜렉터 기준으로 2026-08-24 확인
+ * 2026-09-17 본서버 적용 예정: 테스트월드 1.2.206 강렬한 힘의 결정 판매 가격 조정
+ *   - 주간 보스는 2026-09-17부터, 검은 마법사는 월간 보스 관례에 따라 2026-10-01부터
+ *   - 하드 림보 이상·일부 익스트림은 공지 표에 없어 기존가 유지
  * 6/18 공지에 없는(=변동 없는) 가격은 직전 조정(2025-10-23) 이후 유지 중인 가격이다.
  *
  * 가격 갱신 방법은 README.md의 "가격 데이터 갱신" 절 참고.
  */
 export const DATA_SOURCE = {
-  label: '메이플스토리 공식 업데이트 공지 (2026-08-20 벨로나 반영)',
-  url: 'https://maplestory.nexon.com/news/update/811',
-  /** 이 데이터가 공식 공지와 대조 확인된 날짜 */
-  verifiedAt: '2026-08-24',
+  label: '메이플스토리 테스트월드 결정석 가격 조정 (2026-09-17 본서버 적용)',
+  url: 'https://maplestory.nexon.com/testworld/news/update',
+  /** 이 데이터가 공식/테스트월드 가격표와 대조 확인된 날짜 */
+  verifiedAt: '2026-09-14',
 } as const;
 
 /** 게임 규칙 상수 */
@@ -55,6 +58,10 @@ const PREV = '2025-10-23';
 const P618 = '2026-06-18';
 /** 신규 보스 벨로나 출시일 */
 const P820 = '2026-08-20';
+/** 테스트월드 1.2.206 주간 결정석 조정 본서버 적용일 */
+const P917 = '2026-09-17';
+/** 같은 조정의 검은 마법사 적용일 (월간 보스) */
+const P1001 = '2026-10-01';
 
 const p = (price: number, since: string) => ({ price, since });
 
@@ -69,49 +76,63 @@ export const BOSSES: Boss[] = [
     name: '자쿰',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'chaos', prices: [p(8_080_000, PREV)] }],
+    variants: [
+      { difficulty: 'chaos', prices: [p(8_080_000, PREV), p(4_040_000, P917)] },
+    ],
   },
   {
     id: 'bloody-queen-weekly',
     name: '블러디 퀸',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'chaos', prices: [p(8_140_000, PREV)] }],
+    variants: [
+      { difficulty: 'chaos', prices: [p(8_140_000, PREV), p(4_070_000, P917)] },
+    ],
   },
   {
     id: 'von-bon-weekly',
     name: '반반',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'chaos', prices: [p(8_150_000, PREV)] }],
+    variants: [
+      { difficulty: 'chaos', prices: [p(8_150_000, PREV), p(4_070_000, P917)] },
+    ],
   },
   {
     id: 'pierre-weekly',
     name: '피에르',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'chaos', prices: [p(8_170_000, PREV)] }],
+    variants: [
+      { difficulty: 'chaos', prices: [p(8_170_000, PREV), p(4_080_000, P917)] },
+    ],
   },
   {
     id: 'magnus-weekly',
     name: '매그너스',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'hard', prices: [p(8_560_000, PREV)] }],
+    variants: [
+      { difficulty: 'hard', prices: [p(8_560_000, PREV), p(4_280_000, P917)] },
+    ],
   },
   {
     id: 'vellum-weekly',
     name: '벨룸',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'chaos', prices: [p(9_280_000, PREV)] }],
+    variants: [
+      { difficulty: 'chaos', prices: [p(9_280_000, PREV), p(4_640_000, P917)] },
+    ],
   },
   {
     id: 'papulatus-weekly',
     name: '파풀라투스',
     reset: 'weekly',
     maxPartySize: 6,
-    variants: [{ difficulty: 'chaos', prices: [p(13_100_000, P618)] }],
+    variants: [
+      { difficulty: 'chaos', prices: [p(13_100_000, P618), p(6_550_000, P917)] },
+    ],
   },
   {
     id: 'lotus',
@@ -119,12 +140,12 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(16_700_000, P618)] },
-      { difficulty: 'hard', prices: [p(51_500_000, P618)] },
+      { difficulty: 'normal', prices: [p(16_700_000, P618), p(8_350_000, P917)] },
+      { difficulty: 'hard', prices: [p(51_500_000, P618), p(48_900_000, P917)] },
       {
         difficulty: 'extreme',
         maxPartySize: 2,
-        prices: [p(574_000_000, P618)],
+        prices: [p(574_000_000, P618), p(545_000_000, P917)],
       },
     ],
   },
@@ -134,8 +155,8 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(17_500_000, P618)] },
-      { difficulty: 'hard', prices: [p(48_900_000, P618)] },
+      { difficulty: 'normal', prices: [p(17_500_000, P618), p(8_750_000, P917)] },
+      { difficulty: 'hard', prices: [p(48_900_000, P618), p(46_400_000, P917)] },
     ],
   },
   {
@@ -144,8 +165,11 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(25_500_000, P618)] },
-      { difficulty: 'chaos', prices: [p(75_100_000, P618)] },
+      {
+        difficulty: 'normal',
+        prices: [p(25_500_000, P618), p(12_700_000, P917)],
+      },
+      { difficulty: 'chaos', prices: [p(75_100_000, P618), p(71_300_000, P917)] },
     ],
   },
   {
@@ -154,9 +178,9 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'easy', prices: [p(29_800_000, P618)] },
-      { difficulty: 'normal', prices: [p(35_600_000, P618)] },
-      { difficulty: 'hard', prices: [p(62_900_000, P618)] },
+      { difficulty: 'easy', prices: [p(29_800_000, P618), p(14_900_000, P917)] },
+      { difficulty: 'normal', prices: [p(35_600_000, P618), p(17_800_000, P917)] },
+      { difficulty: 'hard', prices: [p(62_900_000, P618), p(59_700_000, P917)] },
     ],
   },
   {
@@ -165,9 +189,9 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'easy', prices: [p(32_300_000, P618)] },
-      { difficulty: 'normal', prices: [p(41_100_000, P618)] },
-      { difficulty: 'hard', prices: [p(77_100_000, P618)] },
+      { difficulty: 'easy', prices: [p(32_300_000, P618), p(16_100_000, P917)] },
+      { difficulty: 'normal', prices: [p(41_100_000, P618), p(20_500_000, P917)] },
+      { difficulty: 'hard', prices: [p(77_100_000, P618), p(73_200_000, P917)] },
     ],
   },
   {
@@ -176,8 +200,8 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(44_000_000, P618)] },
-      { difficulty: 'chaos', prices: [p(69_800_000, P618)] },
+      { difficulty: 'normal', prices: [p(44_000_000, P618), p(22_000_000, P917)] },
+      { difficulty: 'chaos', prices: [p(69_800_000, P618), p(66_300_000, P917)] },
     ],
   },
   {
@@ -186,8 +210,8 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(47_500_000, P618)] },
-      { difficulty: 'hard', prices: [p(94_400_000, P618)] },
+      { difficulty: 'normal', prices: [p(47_500_000, P618), p(23_700_000, P917)] },
+      { difficulty: 'hard', prices: [p(94_400_000, P618), p(89_600_000, P917)] },
     ],
   },
   {
@@ -196,8 +220,8 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(71_200_000, P618)] },
-      { difficulty: 'hard', prices: [p(106_000_000, P618)] },
+      { difficulty: 'normal', prices: [p(71_200_000, P618), p(67_600_000, P917)] },
+      { difficulty: 'hard', prices: [p(106_000_000, P618), p(100_000_000, P917)] },
     ],
   },
   {
@@ -206,9 +230,15 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'normal', prices: [p(239_000_000, P618)] },
-      { difficulty: 'hard', prices: [p(356_000_000, P618)] },
-      { difficulty: 'extreme', prices: [p(2_835_000_000, P618)] },
+      {
+        difficulty: 'normal',
+        prices: [p(239_000_000, P618), p(167_000_000, P917)],
+      },
+      { difficulty: 'hard', prices: [p(356_000_000, P618), p(302_000_000, P917)] },
+      {
+        difficulty: 'extreme',
+        prices: [p(2_835_000_000, P618), p(1_840_000_000, P917)],
+      },
     ],
   },
   {
@@ -217,9 +247,15 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'easy', prices: [p(280_000_000, P618)] },
-      { difficulty: 'normal', prices: [p(505_000_000, P618)] },
-      { difficulty: 'chaos', prices: [p(1_273_000_000, P618)] },
+      { difficulty: 'easy', prices: [p(280_000_000, P618), p(238_000_000, P917)] },
+      {
+        difficulty: 'normal',
+        prices: [p(505_000_000, P618), p(479_000_000, P917)],
+      },
+      {
+        difficulty: 'chaos',
+        prices: [p(1_273_000_000, P618), p(1_230_000_000, P917)],
+      },
       { difficulty: 'extreme', prices: [p(4_104_000_000, P618)] },
     ],
   },
@@ -229,9 +265,15 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 3,
     variants: [
-      { difficulty: 'easy', prices: [p(308_000_000, P618)] },
-      { difficulty: 'normal', prices: [p(560_000_000, P618)] },
-      { difficulty: 'hard', prices: [p(1_435_000_000, P618)] },
+      { difficulty: 'easy', prices: [p(308_000_000, P618), p(261_000_000, P917)] },
+      {
+        difficulty: 'normal',
+        prices: [p(560_000_000, P618), p(532_000_000, P917)],
+      },
+      {
+        difficulty: 'hard',
+        prices: [p(1_435_000_000, P618), p(1_390_000_000, P917)],
+      },
       { difficulty: 'extreme', prices: [p(4_712_000_000, P618)] },
     ],
   },
@@ -241,9 +283,15 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 6,
     variants: [
-      { difficulty: 'easy', prices: [p(377_000_000, P618)] },
-      { difficulty: 'normal', prices: [p(678_000_000, P618)] },
-      { difficulty: 'hard', prices: [p(1_739_000_000, P618)] },
+      { difficulty: 'easy', prices: [p(377_000_000, P618), p(320_000_000, P917)] },
+      {
+        difficulty: 'normal',
+        prices: [p(678_000_000, P618), p(576_000_000, P917)],
+      },
+      {
+        difficulty: 'hard',
+        prices: [p(1_739_000_000, P618), p(1_560_000_000, P917)],
+      },
       { difficulty: 'extreme', prices: [p(5_387_000_000, P618)] },
     ],
   },
@@ -254,8 +302,11 @@ export const BOSSES: Boss[] = [
     maxPartySize: 3,
     // variants는 가격 오름차순 유지 (스케줄러가 마지막 완료 난이도를 선택)
     variants: [
-      { difficulty: 'easy', prices: [p(440_000_000, P820)] },
-      { difficulty: 'normal', prices: [p(850_000_000, P820)] },
+      { difficulty: 'easy', prices: [p(440_000_000, P820), p(396_000_000, P917)] },
+      {
+        difficulty: 'normal',
+        prices: [p(850_000_000, P820), p(824_000_000, P917)],
+      },
       { difficulty: 'hard', prices: [p(2_950_000_000, P820)] },
     ],
   },
@@ -265,7 +316,7 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 3,
     variants: [
-      { difficulty: 'normal', prices: [p(625_000_000, P618)] },
+      { difficulty: 'normal', prices: [p(625_000_000, P618), p(593_000_000, P917)] },
       { difficulty: 'hard', prices: [p(2_678_000_000, P618)] },
     ],
   },
@@ -275,7 +326,10 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 3,
     variants: [
-      { difficulty: 'normal', prices: [p(1_026_000_000, P618)] },
+      {
+        difficulty: 'normal',
+        prices: [p(1_026_000_000, P618), p(995_000_000, P917)],
+      },
       { difficulty: 'hard', prices: [p(2_385_000_000, P618)] },
     ],
   },
@@ -285,7 +339,10 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 3,
     variants: [
-      { difficulty: 'normal', prices: [p(1_368_000_000, P618)] },
+      {
+        difficulty: 'normal',
+        prices: [p(1_368_000_000, P618), p(1_320_000_000, P917)],
+      },
       { difficulty: 'hard', prices: [p(3_078_000_000, P618)] },
     ],
   },
@@ -295,7 +352,10 @@ export const BOSSES: Boss[] = [
     reset: 'weekly',
     maxPartySize: 3,
     variants: [
-      { difficulty: 'normal', prices: [p(1_615_000_000, P618)] },
+      {
+        difficulty: 'normal',
+        prices: [p(1_615_000_000, P618), p(1_560_000_000, P917)],
+      },
       { difficulty: 'hard', prices: [p(4_845_000_000, P618)] },
     ],
   },
@@ -310,11 +370,20 @@ export const BOSSES: Boss[] = [
       {
         difficulty: 'hard',
         // 6/18 공지: 변경 가격은 2026-07-01부터 적용
-        prices: [p(700_000_000, '2025-11-01'), p(665_000_000, '2026-07-01')],
+        // 9/17 조정: 월간 보스는 2026-10-01부터 적용
+        prices: [
+          p(700_000_000, '2025-11-01'),
+          p(665_000_000, '2026-07-01'),
+          p(465_000_000, P1001),
+        ],
       },
       {
         difficulty: 'extreme',
-        prices: [p(9_200_000_000, '2025-11-01'), p(8_740_000_000, '2026-07-01')],
+        prices: [
+          p(9_200_000_000, '2025-11-01'),
+          p(8_740_000_000, '2026-07-01'),
+          p(5_680_000_000, P1001),
+        ],
       },
     ],
   },

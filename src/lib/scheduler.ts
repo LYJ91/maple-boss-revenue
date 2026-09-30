@@ -321,12 +321,15 @@ export function epicDungeonProgress(state: SchedulerState): AutoProgress {
   };
 }
 
-/** 체크리스트 기본 항목 id → 자동 진행 계산 함수 (없으면 수동 항목) */
+/**
+ * 체크리스트 기본 항목 id → 자동 진행 계산 함수 (없으면 수동 항목).
+ * 주간보스는 여기서 빠져 있다. 보스수익과 같은 주간 선택을 세야 두 탭의
+ * 숫자가 어긋나지 않기 때문에 `weeklySelectionCount`로 계산한다.
+ */
 export const AUTO_ITEM_PROGRESS: Record<
   string,
   (state: SchedulerState) => AutoProgress
 > = {
-  "weekly-boss": weeklyBossProgress,
   suro: culvertProgress,
   "epic-dungeon": epicDungeonProgress,
 };

@@ -67,3 +67,23 @@ export function canQueryNexonDate(
   const age = daysBeforeToday(iso, now);
   return age >= 1 && age <= NEXON_HISTORY_LOOKBACK_DAYS;
 }
+
+/** YYYY-MM-DD → YYYY-MM */
+export function monthKey(dateISO: string): string {
+  return dateISO.slice(0, 7);
+}
+
+/** 오늘 기준 넥슨 과거 조회가 가능한 날짜 (최신일부터) */
+export function nexonLookbackDates(
+  todayISO: string,
+  now: Date = parseISODate(todayISO),
+): string[] {
+  const dates: string[] = [];
+  for (let i = 1; i <= NEXON_HISTORY_LOOKBACK_DAYS; i += 1) {
+    const date = parseISODate(todayISO);
+    date.setDate(date.getDate() - i);
+    const iso = toISODate(date);
+    if (canQueryNexonDate(iso, now)) dates.push(iso);
+  }
+  return dates;
+}

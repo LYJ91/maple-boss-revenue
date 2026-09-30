@@ -64,4 +64,123 @@ describe('toggleBossSelection', () => {
       clearsPerWeek: 7,
     });
   });
+
+  it('월간 보스 수동 선택은 해당 달로 확정한다', () => {
+    const character = toggleBossSelection(
+      emptyCharacter(),
+      'black-mage',
+      'hard',
+      '2026-09',
+    );
+    expect(character.monthlyConfirmedMonth).toBe('2026-09');
+    expect(character.entries).toContainEqual({
+      bossId: 'black-mage',
+      difficulty: 'hard',
+      partySize: 1,
+      clearsPerWeek: 7,
+    });
+  });
+
+  it('주간 보스 수동 선택은 해당 주차로 확정한다', () => {
+    const character = toggleBossSelection(
+      emptyCharacter(),
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    expect(character.weeklyConfirmedWeek).toBe('2026-09-10');
+    expect(character.entries).toContainEqual({
+      bossId: 'lotus',
+      difficulty: 'hard',
+      partySize: 1,
+      clearsPerWeek: 7,
+    });
+  });
+
+  it('새 주차에서 주간 보스를 누르면 지난 주 주간 선택은 버린다', () => {
+    const previous: Character = {
+      ...emptyCharacter(),
+      weeklyConfirmedWeek: '2026-09-03',
+      entries: [
+        {
+          bossId: 'will',
+          difficulty: 'hard',
+          partySize: 1,
+          clearsPerWeek: 7,
+        },
+        {
+          bossId: 'black-mage',
+          difficulty: 'hard',
+          partySize: 1,
+          clearsPerWeek: 7,
+        },
+      ],
+    };
+    const next = toggleBossSelection(
+      previous,
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    expect(next.weeklyConfirmedWeek).toBe('2026-09-10');
+    expect(next.entries.map((entry) => entry.bossId).sort()).toEqual([
+      'black-mage',
+      'lotus',
+    ]);
+    expect(next.weeklyByWeek?.['2026-09-03']?.map((entry) => entry.bossId)).toEqual(
+      ['will'],
+    );
+    expect(next.weeklyByWeek?.['2026-09-10']?.map((entry) => entry.bossId)).toEqual(
+      ['lotus'],
+    );
+  });
+
+  it('주간 보스를 직접 끄면 그 주에 제외로 기억한다', () => {
+    const selected = toggleBossSelection(
+      emptyCharacter(),
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    const cleared = toggleBossSelection(
+      selected,
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    expect(cleared.entries).toEqual([]);
+    expect(cleared.weeklyDecisions?.['2026-09-10']).toEqual({
+      lotus: 'excluded',
+    });
+  });
+
+  it('다시 켜면 제외 기억이 사라진다', () => {
+    let character = toggleBossSelection(
+      emptyCharacter(),
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    character = toggleBossSelection(
+      character,
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    character = toggleBossSelection(
+      character,
+      'lotus',
+      'hard',
+      undefined,
+      '2026-09-10',
+    );
+    expect(character.weeklyDecisions?.['2026-09-10']).toEqual({});
+    expect(character.entries.map((entry) => entry.bossId)).toEqual(['lotus']);
+  });
 });

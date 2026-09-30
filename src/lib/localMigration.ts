@@ -1,4 +1,4 @@
-﻿import type { TodoState } from "./todoStorage";
+﻿import type { LoadedTodoState, TodoState } from "./todoStorage";
 import type { AppState } from "./storage";
 import type { WeekRecord } from "./history";
 
@@ -8,8 +8,13 @@ export interface LegacyAccount {
   apiKey?: string;
   connected?: boolean;
 }
-export interface LegacyTodoState extends Omit<TodoState, "accounts"> {
+export interface LegacyTodoState
+  extends Partial<Omit<LoadedTodoState, "accounts" | "items" | "checks">> {
+  items: LoadedTodoState["items"];
+  checks: LoadedTodoState["checks"];
   accounts: LegacyAccount[];
+  /** v3 이전 저장분의 캐릭터 목록 (원본 필드명) */
+  characters?: LoadedTodoState["legacyCharacters"];
 }
 
 export function hasCalculatorData(state: AppState): boolean {
@@ -17,7 +22,7 @@ export function hasCalculatorData(state: AppState): boolean {
 }
 export function hasTodoData(state: LegacyTodoState): boolean {
   return (
-    state.characters.length > 0 ||
+    (state.legacyCharacters?.length ?? state.characters?.length ?? 0) > 0 ||
     state.accounts.length > 0 ||
     Object.keys(state.checks).length > 0 ||
     state.items.some((i) => !i.builtin)
@@ -27,15 +32,25 @@ export function hasHistoryData(records: WeekRecord[]): boolean {
   return records.length > 0;
 }
 
-export function redactTodoKeys(state: LegacyTodoState): TodoState {
+export function redactTodoKeys(state: LegacyTodoState): LoadedTodoState {
+  const { characters, ...rest } = state;
+  const legacyCharacters = state.legacyCharacters ?? characters;
   return {
-    ...state,
+    ...rest,
+    disabledItems: state.disabledItems ?? {},
+    ...(legacyCharacters ? { legacyCharacters } : {}),
     accounts: state.accounts.map(({ id, label }) => ({
       id,
       label,
       connected: true,
     })),
   };
+}
+
+/** 서버로 보낼 payload에서 마이그레이션 입력용 필드를 제거한다 */
+export function toStoredTodoState(state: LoadedTodoState): TodoState {
+  const { legacyCharacters: _drop, ...rest } = state;
+  return rest;
 }
 
 const BACKUP_KEY = "maple-boss-revenue:pre-server-migration:v1";

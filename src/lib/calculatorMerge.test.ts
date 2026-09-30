@@ -157,7 +157,7 @@ describe("mergeCalculatorState", () => {
     expect(merged.characters[0].partyPrefs).toEqual({ lotus: 4 });
   });
 
-  it("이 기기가 지운 캐릭터는 다른 기기가 고쳐도 되살리지 않는다", () => {
+  it("이 기기가 지워도 다른 기기가 고친 캐릭터는 남는다", () => {
     const base = state([
       character({ id: "c1", name: "A", meta: { level: 200 }, entries: [] }),
     ]);
@@ -165,10 +165,12 @@ describe("mergeCalculatorState", () => {
     const remote = state([
       character({ id: "c1", name: "A", meta: { level: 210 }, entries: [] }),
     ]);
-    expect(mergeCalculatorState(base, local, remote).characters).toEqual([]);
+    expect(mergeCalculatorState(base, local, remote).characters).toEqual(
+      remote.characters,
+    );
   });
 
-  it("다른 기기가 지운 캐릭터는 이 기기가 고쳐도 되살리지 않는다", () => {
+  it("다른 기기가 캐릭터를 지워도 이 기기가 고친 캐릭터는 남는다", () => {
     const base = state([
       character({ entries: [entry("lotus", 1)], partyPrefs: { lotus: 1 } }),
     ]);
@@ -176,6 +178,98 @@ describe("mergeCalculatorState", () => {
       character({ entries: [entry("lotus", 3)], partyPrefs: { lotus: 3 } }),
     ]);
     const remote = state([]);
-    expect(mergeCalculatorState(base, local, remote).characters).toEqual([]);
+    expect(mergeCalculatorState(base, local, remote).characters[0].entries[0].partySize).toBe(3);
+  });
+
+  it("반대쪽이 그대로면 지운 캐릭터와 보스는 삭제된다", () => {
+    const base = state([
+      character({
+        id: "c1",
+        entries: [entry("lotus", 2), entry("damien", 2)],
+        partyPrefs: { lotus: 2, damien: 2 },
+      }),
+      character({ id: "c2", name: "다른", entries: [] }),
+    ]);
+    const local = state([
+      character({
+        id: "c1",
+        entries: [entry("lotus", 2)],
+        partyPrefs: { lotus: 2, damien: 2 },
+      }),
+    ]);
+    const remote = state([
+      character({
+        id: "c1",
+        entries: [entry("lotus", 2), entry("damien", 2)],
+        partyPrefs: { lotus: 2, damien: 2 },
+      }),
+      character({ id: "c2", name: "다른", entries: [] }),
+    ]);
+    const droppedBoss = mergeCalculatorState(base, local, remote);
+    expect(droppedBoss.characters.map((item) => item.id)).toEqual(["c1"]);
+    expect(droppedBoss.characters[0].entries.map((item) => item.bossId)).toEqual([
+      "lotus",
+    ]);
+
+    const droppedCharacter = mergeCalculatorState(base, remote, local);
+    expect(droppedCharacter.characters.map((item) => item.id)).toEqual(["c1"]);
+  });
+
+  it("기준이 없으면 로컬에만 있는 보스와 캐릭터를 유지한다", () => {
+    const local = state([
+      character({
+        id: "c1",
+        entries: [entry("lotus", 2), entry("will", 3)],
+        partyPrefs: { lotus: 2, will: 3 },
+      }),
+      character({ id: "c2", name: "로컬만", entries: [entry("damien", 2)] }),
+    ]);
+    const remote = state([
+      character({
+        id: "c1",
+        entries: [entry("lotus", 4)],
+        partyPrefs: { lotus: 4 },
+      }),
+    ]);
+    const merged = mergeCalculatorState(null, local, remote);
+    expect(merged.characters.map((item) => item.id)).toEqual(["c1", "c2"]);
+    expect(merged.characters[0].entries.map((item) => item.bossId)).toEqual([
+      "lotus",
+      "will",
+    ]);
+    expect(merged.characters[0].entries[0].partySize).toBe(2);
+    expect(merged.characters[0].partyPrefs?.will).toBe(3);
+  });
+
+  it("기준이 없으면 1이 아닌 파티 인원을 남긴다", () => {
+    const one = state([
+      character({ entries: [entry("lotus", 1)], partyPrefs: { lotus: 1 } }),
+    ]);
+    const four = state([
+      character({ entries: [entry("lotus", 4)], partyPrefs: { lotus: 4 } }),
+    ]);
+    const three = state([
+      character({ entries: [entry("lotus", 3)], partyPrefs: { lotus: 3 } }),
+    ]);
+    expect(mergeCalculatorState(null, one, four).characters[0].entries[0].partySize).toBe(4);
+    expect(mergeCalculatorState(null, one, four).characters[0].partyPrefs?.lotus).toBe(4);
+    expect(mergeCalculatorState(null, four, one).characters[0].entries[0].partySize).toBe(4);
+    expect(mergeCalculatorState(null, three, four).characters[0].entries[0].partySize).toBe(3);
+    expect(mergeCalculatorState(null, four, four).characters[0].entries[0].partySize).toBe(4);
+  });
+
+  it("기준이 생긴 뒤 사용자가 1로 바꾼 인원은 유지한다", () => {
+    const base = state([
+      character({ entries: [entry("lotus", 4)], partyPrefs: { lotus: 4 } }),
+    ]);
+    const local = state([
+      character({ entries: [entry("lotus", 1)], partyPrefs: { lotus: 1 } }),
+    ]);
+    const remote = state([
+      character({ entries: [entry("lotus", 4)], partyPrefs: { lotus: 4 } }),
+    ]);
+    const merged = mergeCalculatorState(base, local, remote);
+    expect(merged.characters[0].entries[0].partySize).toBe(1);
+    expect(merged.characters[0].partyPrefs?.lotus).toBe(1);
   });
 });

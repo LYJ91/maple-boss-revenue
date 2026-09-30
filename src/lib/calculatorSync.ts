@@ -24,14 +24,14 @@ export function isRevisionConflict(error: unknown): boolean {
 }
 
 export async function pushMergedCalculator(input: {
-  base: AppState;
+  base: AppState | null;
   local: AppState;
   remote: CalculatorRemote;
   getRemote: () => Promise<CalculatorRemote>;
   put: (state: AppState, baseRevision: number) => Promise<{ revision: number }>;
   maxAttempts?: number;
 }): Promise<{ state: AppState; revision: number; pushed: boolean }> {
-  let base = input.base;
+  let base: AppState | null = input.base;
   let local = input.local;
   let remote = input.remote;
   const maxAttempts = input.maxAttempts ?? 4;

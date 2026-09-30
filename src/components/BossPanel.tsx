@@ -9,6 +9,7 @@ import {
 } from '../data/crystalData';
 import { BOSS_PRESETS, type BossPreset } from '../data/presets';
 import type { CharacterSummary } from '../lib/calc';
+import type { WeeklyVerification } from '../lib/bossConflict';
 import { crystalValue, priceAt } from '../lib/calc';
 import { formatFull, formatMeso } from '../lib/format';
 import { bossKey } from '../lib/scheduler';
@@ -39,27 +40,34 @@ interface Props {
   onUpdateEntry(bossId: string, patch: Partial<BossEntry>): void;
   onApplyPreset(preset: BossPreset): void;
   onRename(name: string): void;
+  /** 내 선택이 API 처치 내역으로 뒷받침되는지 (결정 여부와 무관한 사실) */
+  verification?: WeeklyVerification;
 }
 
-/** 캐릭터의 주간 보스 설정이 프리셋 구성과 정확히 일치하는지 */
+/** 캐릭터의 주간 보스 설정이 프리셋 구성(난이도·인원)과 정확히 일치하는지 */
 function matchesPreset(character: Character, preset: BossPreset): boolean {
   const weekly = character.entries.filter(
     (e) => BOSS_MAP.get(e.bossId)?.reset === 'weekly',
   );
   if (weekly.length !== preset.entries.length) return false;
   return preset.entries.every((p) =>
-    weekly.some((e) => e.bossId === p.bossId && e.difficulty === p.difficulty),
+    weekly.some(
+      (e) =>
+        e.bossId === p.bossId &&
+        e.difficulty === p.difficulty &&
+        e.partySize === p.partySize,
+    ),
   );
 }
 
-/** 프리셋의 주간 결정석 합계 (솔플 기준, 조회 날짜 가격) */
+/** 프리셋의 주간 결정석 합계 (파티 인원 반영, 조회 날짜 가격) */
 function presetRevenue(preset: BossPreset, today: string): number {
   let sum = 0;
-  for (const { bossId, difficulty } of preset.entries) {
+  for (const { bossId, difficulty, partySize } of preset.entries) {
     const variant = BOSS_MAP.get(bossId)?.variants.find(
       (v) => v.difficulty === difficulty,
     );
-    if (variant) sum += priceAt(variant, today);
+    if (variant) sum += crystalValue(priceAt(variant, today), partySize);
   }
   return sum;
 }
@@ -74,10 +82,15 @@ export function BossPanel({
   onUpdateEntry,
   onApplyPreset,
   onRename,
+  verification,
 }: Props) {
   const entryMap = new Map(character.entries.map((e) => [e.bossId, e]));
   const over12 =
     (summary?.weeklyBossSelected ?? 0) > RULES.weeklyBossSellLimitPerCharacter;
+  const unverified = verification?.reliable
+    ? verification.unverified
+    : [];
+  const unverifiedIds = new Set(unverified.map((entry) => entry.bossId));
 
   return (
     <div className="boss-panel">
@@ -110,16 +123,37 @@ export function BossPanel({
             주간 보스 {summary?.weeklyBossSelected ?? 0}/
             {RULES.weeklyBossSellLimitPerCharacter}
           </span>
+          {verification?.reliable && (
+            <span
+              className={'chip lg' + (unverified.length > 0 ? ' warn' : '')}
+              title={
+                unverified.length > 0
+                  ? `넥슨 API가 처치로 확인한 주간 보스는 ${verification.apiCount}개입니다. 내 선택 중 ${unverified.length}개는 확인되지 않았습니다.`
+                  : '내 선택이 모두 넥슨 API 처치 내역과 일치합니다.'
+              }
+            >
+              API 확인 {verification.apiCount}
+              {unverified.length > 0 && ` · 미확인 ${unverified.length}`}
+            </span>
+          )}
         </div>
       </div>
 
+      {unverified.length > 0 && (
+        <p className="notice warn">
+          내 선택 {verification!.selectedCount}개 중 {unverified.length}개는 넥슨
+          API가 처치로 확인해주지 않았습니다 (API 확인 {verification!.apiCount}개).
+          실제로 잡지 않았다면 해제해주세요 — 아래 목록에서 '미확인' 표시를 보세요.
+        </p>
+      )}
+
       {clearedBossKeys && (
         <p className="notice info sync-note">
-          넥슨 API 연동됨 — 현재 주기에 실제로 처치한 보스가 난이도(
+          넥슨 API 연동됨 — 처치한 보스가 난이도(
           <span className="cleared-dot" aria-hidden="true">✓</span> 표시)까지
-          자동 선택되어 수익에 반영됩니다. 파티 인원을 바꾸면 다음 주에도 그대로
-          유지됩니다. 주간·월간 보스를 수동으로 바꿔도 다음 새로고침 때 처치 내역
-          기준으로 되돌아갑니다.
+          자동으로 추가됩니다. 같은 주에는 수동으로 켠 보스와 이미 선택된 보스를
+          지우지 않습니다. 파티 인원은 다음 주에도 유지되고, 주간 선택은 목요일에
+          새 주차로 넘어갑니다.
         </p>
       )}
       {monthlyChecking && (
@@ -133,8 +167,8 @@ export function BossPanel({
         <div className="preset-head">
           <h3>주간 보스 프리셋</h3>
           <span className="group-desc">
-            커뮤니티 통용 보스돌이 구성 — 클릭 시 주간 보스가 해당 구성(솔플 기준)으로
-            설정됩니다. 일일·월간 보스 설정은 유지됩니다.
+            클릭 시 주간 보스가 해당 구성(파티 인원 포함)으로 설정됩니다. 일일·월간
+            보스 설정은 유지됩니다.
           </span>
         </div>
         <div className="preset-chips">
@@ -145,7 +179,7 @@ export function BossPanel({
                 key={preset.id}
                 type="button"
                 className={'preset-chip' + (active ? ' on' : '')}
-                title={`${preset.description}\n주간 결정석 합계(솔플): ${formatMeso(presetRevenue(preset, today))} 메소`}
+                title={`${preset.description}\n주간 결정석 합계: ${formatMeso(presetRevenue(preset, today))} 메소`}
                 onClick={() => onApplyPreset(preset)}
               >
                 <span className="preset-name">{preset.name}</span>
@@ -180,6 +214,7 @@ export function BossPanel({
                   entry={entryMap.get(boss.id)}
                   today={today}
                   clearedBossKeys={clearedBossKeys}
+                  unverified={unverifiedIds.has(boss.id)}
                   onToggle={onToggle}
                   onUpdate={onUpdateEntry}
                 />
@@ -197,11 +232,21 @@ interface RowProps {
   entry: BossEntry | undefined;
   today: string;
   clearedBossKeys: ReadonlySet<string> | null;
+  /** 선택했지만 API가 처치로 확인해주지 않은 보스 */
+  unverified: boolean;
   onToggle(bossId: string, difficulty: Difficulty): void;
   onUpdate(bossId: string, patch: Partial<BossEntry>): void;
 }
 
-function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: RowProps) {
+function BossRow({
+  boss,
+  entry,
+  today,
+  clearedBossKeys,
+  unverified,
+  onToggle,
+  onUpdate,
+}: RowProps) {
   const variant = entry
     ? boss.variants.find((v) => v.difficulty === entry.difficulty)
     : undefined;
@@ -223,8 +268,23 @@ function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: Ro
       <span className="boss-name">
         {boss.name}
         {rowCleared && (
-          <span className="cleared-tag" title="이번 주 처치 완료 (넥슨 API)">
+          <span
+            className="cleared-tag"
+            title={
+              boss.reset === 'monthly'
+                ? '이번 달 처치 완료'
+                : '이번 주 처치 완료 (넥슨 API)'
+            }
+          >
             격파
+          </span>
+        )}
+        {unverified && (
+          <span
+            className="unverified-tag"
+            title="선택했지만 넥슨 API 처치 내역에는 없습니다. 실제로 잡지 않았다면 해제해주세요."
+          >
+            미확인
           </span>
         )}
       </span>
@@ -244,7 +304,11 @@ function BossRow({ boss, entry, today, clearedBossKeys, onToggle, onUpdate }: Ro
               }
               title={
                 `결정석 ${formatFull(priceAt(v, today))} 메소` +
-                (cleared ? '\n이번 주 처치 완료 (넥슨 API)' : '')
+                (cleared
+                  ? boss.reset === 'monthly'
+                    ? '\n이번 달 처치 완료'
+                    : '\n이번 주 처치 완료 (넥슨 API)'
+                  : '')
               }
               onClick={() => onToggle(boss.id, v.difficulty)}
             >

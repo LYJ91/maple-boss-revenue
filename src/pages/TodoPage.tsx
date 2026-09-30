@@ -1,121 +1,132 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { ResetDay, TodoAccount, TodoCharacter, TodoItem } from "../types";
+import type {
+  Character,
+  ResetDay,
+  TodoAccount,
+  TodoItem,
+} from "../types";
 import {
   fetchAccountCharacters,
   searchCharacter,
   type LookupCharacter,
 } from "../lib/nexon";
-import {
-  AUTO_ITEM_PROGRESS,
-  fetchScheduler,
-  type SchedulerState,
-} from "../lib/scheduler";
+import { AUTO_ITEM_PROGRESS, type SchedulerState } from "../lib/scheduler";
+import type { WeeklyVerification } from "../lib/bossConflict";
+import { RULES } from "../data/crystalData";
+import { weeklySelectionCount } from "../lib/weeklyBoss";
 import { CharacterAvatar } from "../components/CharacterAvatar";
 import { RESET_DAY_LABEL, weekKey } from "../lib/week";
-import {
-  checkKey,
-  loadTodoState,
-  saveTodoState,
-  type TodoState,
-} from "../lib/todoStorage";
-import { createServerAccount, deleteServerAccount } from "../lib/sync";
+import { checkKey, type TodoState } from "../lib/todoStorage";
+import { gotoHome } from "../lib/router";
 
-function newId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+export interface TodoPageProps {
+  /** 보스수익과 공유하는 단일 캐릭터 목록 */
+  characters: Character[];
+  todo: TodoState;
+  /** 캐릭터 id → 내 선택과 API 처치 내역의 대조 결과 */
+  verifications: Record<string, WeeklyVerification>;
+  /** ocid → 최신 스케줄러 응답 */
+  schedules: Record<string, SchedulerState>;
+  scheduleErrors: Record<string, string>;
+  refreshing: boolean;
+  /** 주간 보스 주차 키 (목요일) */
+  week: string;
+  conflictCount: number;
+  onOpenConflicts(): void;
+  onRefresh(): void;
+  onAddAccount(label: string, apiKey: string): Promise<TodoAccount>;
+  onRemoveAccount(id: string): Promise<void>;
+  onAddCharacters(accountId: string, list: LookupCharacter[]): void;
+  onRemoveCharacter(id: string): void;
+  onSelectCharacter(id: string): void;
+  onToggleCheck(itemId: string, characterId: string, itemWeek: string): void;
+  onAddItem(label: string, resetDay: ResetDay): void;
+  onRemoveItem(itemId: string): void;
+  onToggleItemForCharacter(characterId: string, itemId: string): void;
 }
 
-/** 캐릭터별 스케줄러 조회 상태 */
-interface SchedSlot {
-  state?: SchedulerState;
-  error?: string;
-  loading?: boolean;
-}
-
-export function TodoPage() {
-  const [state, setState] = useState<TodoState>(loadTodoState);
+export function TodoPage({
+  characters,
+  todo,
+  verifications,
+  schedules,
+  scheduleErrors,
+  refreshing,
+  week,
+  conflictCount,
+  onOpenConflicts,
+  onRefresh,
+  onAddAccount,
+  onRemoveAccount,
+  onAddCharacters,
+  onRemoveCharacter,
+  onSelectCharacter,
+  onToggleCheck,
+  onAddItem,
+  onRemoveItem,
+  onToggleItemForCharacter,
+}: TodoPageProps) {
   const [showImport, setShowImport] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
   const [settingsCharId, setSettingsCharId] = useState<string | null>(null);
-  const [schedules, setSchedules] = useState<Record<string, SchedSlot>>({});
-
-  useEffect(() => {
-    saveTodoState(state);
-  }, [state]);
 
   const accountById = useMemo(
-    () => new Map(state.accounts.map((a) => [a.id, a])),
-    [state.accounts],
+    () => new Map(todo.accounts.map((a) => [a.id, a])),
+    [todo.accounts],
   );
 
-  /** API 연동 가능한 캐릭터(ocid+계정 키 보유)의 스케줄러 현황 조회 */
-  const refreshSchedules = useCallback(
-    (force: boolean) => {
-      for (const c of state.characters) {
-        const ocid = c.meta?.ocid;
-        const account = c.meta?.accountId
-          ? accountById.get(c.meta.accountId)
-          : undefined;
-        if (!ocid || !account) continue;
-        setSchedules((prev) => ({
-          ...prev,
-          [c.id]: { ...prev[c.id], loading: true },
-        }));
-        fetchScheduler(ocid, account.id, { force })
-          .then((st) =>
-            setSchedules((prev) => ({ ...prev, [c.id]: { state: st } })),
-          )
-          .catch((e) =>
-            setSchedules((prev) => ({
-              ...prev,
-              [c.id]: {
-                ...prev[c.id],
-                loading: false,
-                error: e instanceof Error ? e.message : "조회 실패",
-              },
-            })),
-          );
-      }
-    },
-    [state.characters, accountById],
-  );
-
-  useEffect(() => {
-    refreshSchedules(false);
-  }, [refreshSchedules]);
-
-  const anyLinked = state.characters.some(
+  const anyLinked = characters.some(
     (c) =>
       c.meta?.ocid && c.meta.accountId && accountById.has(c.meta.accountId),
   );
-  const anyLoading = Object.values(schedules).some((s) => s.loading);
 
   // 항목별 현재 주차 키 (리셋 요일이 달라 항목마다 주차가 다를 수 있다)
   const weekKeys = useMemo(() => {
     const map = new Map<string, string>();
-    for (const item of state.items) map.set(item.id, weekKey(item.resetDay));
+    for (const item of todo.items) map.set(item.id, weekKey(item.resetDay));
     return map;
-  }, [state.items]);
+  }, [todo.items]);
 
-  const isEnabled = (item: TodoItem, c: TodoCharacter) =>
-    !c.disabledItemIds.includes(item.id);
+  const isEnabled = (item: TodoItem, c: Character) =>
+    !(todo.disabledItems[c.id] ?? []).includes(item.id);
 
-  const isChecked = (item: TodoItem, c: TodoCharacter) =>
-    state.checks[checkKey(item.id, c.id)] === weekKeys.get(item.id);
+  const isChecked = (item: TodoItem, c: Character) =>
+    todo.checks[checkKey(item.id, c.id)] === weekKeys.get(item.id);
 
-  /** API 자동 항목이면 진행 상황을, 아니면 null */
-  const autoProgress = (item: TodoItem, c: TodoCharacter) => {
+  /**
+   * 자동 항목의 진행 상황.
+   * 주간보스는 보스수익과 같은 주간 선택을 세므로 두 탭의 숫자가 항상 일치한다.
+   * API가 확인해주지 않은 보스가 있으면 그 수를 함께 내려보내,
+   * 실제로 안 잡은 보스가 완료로만 보이지 않게 한다.
+   */
+  const autoProgress = (item: TodoItem, c: Character) => {
+    if (item.id === "weekly-boss") {
+      const done = weeklySelectionCount(c, week);
+      const total = RULES.weeklyBossSellLimitPerCharacter;
+      const verification = verifications[c.id];
+      return {
+        done,
+        total,
+        complete: done >= total,
+        linked: true,
+        apiCount: verification?.reliable ? verification.apiCount : null,
+        unverified: verification?.reliable
+          ? verification.unverified.length
+          : 0,
+      };
+    }
     const fn = AUTO_ITEM_PROGRESS[item.id];
-    const sched = schedules[c.id]?.state;
+    const sched = c.meta?.ocid ? schedules[c.meta.ocid] : undefined;
     if (!fn || !sched) return null;
-    return fn(sched);
+    return { ...fn(sched), linked: false, apiCount: null, unverified: 0 };
   };
 
   const progress = useMemo(() => {
     let done = 0;
     let total = 0;
-    for (const item of state.items) {
-      for (const c of state.characters) {
+    for (const item of todo.items) {
+      for (const c of characters) {
         if (!isEnabled(item, c)) continue;
         total += 1;
         const auto = autoProgress(item, c);
@@ -128,33 +139,15 @@ export function TodoPage() {
       pct: total > 0 ? Math.round((done / total) * 100) : 0,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, weekKeys, schedules]);
-
-  const toggleCheck = (item: TodoItem, c: TodoCharacter) => {
-    const key = checkKey(item.id, c.id);
-    const wk = weekKeys.get(item.id)!;
-    setState((prev) => {
-      const checks = { ...prev.checks };
-      if (checks[key] === wk) {
-        delete checks[key];
-      } else {
-        checks[key] = wk;
-      }
-      return { ...prev, checks };
-    });
-  };
+  }, [characters, todo, weekKeys, schedules, week, verifications]);
 
   const addAccount = async (
     label: string,
     apiKey: string,
-  ): Promise<TodoAccount> => {
-    const { account } = await createServerAccount(label, apiKey);
-    setState((prev) => ({ ...prev, accounts: [...prev.accounts, account] }));
-    return account;
-  };
+  ): Promise<TodoAccount> => onAddAccount(label, apiKey);
 
   const removeAccount = async (id: string) => {
-    const target = state.accounts.find((a) => a.id === id);
+    const target = todo.accounts.find((a) => a.id === id);
     if (!target) return;
     if (
       !window.confirm(
@@ -164,11 +157,7 @@ export function TodoPage() {
       return;
     }
     try {
-      await deleteServerAccount(id);
-      setState((prev) => ({
-        ...prev,
-        accounts: prev.accounts.filter((a) => a.id !== id),
-      }));
+      await onRemoveAccount(id);
     } catch (error) {
       window.alert(
         error instanceof Error ? error.message : "계정 삭제에 실패했습니다.",
@@ -176,116 +165,33 @@ export function TodoPage() {
     }
   };
 
-  const addCharacters = (accountId: string, list: LookupCharacter[]) => {
-    const existingOcids = new Set(
-      state.characters.map((c) => c.meta?.ocid).filter(Boolean),
-    );
-    const existingNames = new Set(state.characters.map((c) => c.name));
-    const toAdd = list.filter(
-      (c) => !existingOcids.has(c.ocid) && !existingNames.has(c.name),
-    );
-    setState((prev) => ({
-      ...prev,
-      characters: [
-        ...prev.characters,
-        ...toAdd.map(
-          (c): TodoCharacter => ({
-            id: newId("tc"),
-            name: c.name,
-            meta: {
-              world: c.world,
-              job: c.job,
-              level: c.level,
-              image: c.image,
-              ocid: c.ocid,
-              ...(accountId ? { accountId } : {}),
-            },
-            disabledItemIds: [],
-          }),
-        ),
-      ],
-    }));
-    // 계정 목록 API에는 이미지가 없어 캐릭터 기본 정보로 아바타를 채운다 (실패해도 무방)
-    for (const c of toAdd.filter((c) => !c.image)) {
-      searchCharacter(c.name)
-        .then((info) =>
-          setState((prev) => ({
-            ...prev,
-            characters: prev.characters.map((tc) =>
-              tc.name === c.name && !tc.meta?.image
-                ? { ...tc, meta: { ...tc.meta, image: info.image } }
-                : tc,
-            ),
-          })),
-        )
-        .catch(() => {});
-    }
-  };
-
   const addSearchedCharacter = (c: LookupCharacter) => {
-    addCharacters("", [c]);
+    onAddCharacters("", [c]);
   };
 
   const removeCharacter = (id: string) => {
-    const target = state.characters.find((c) => c.id === id);
+    const target = characters.find((c) => c.id === id);
     if (!target) return;
-    if (!window.confirm(`'${target.name}' 캐릭터를 체크리스트에서 제거할까요?`))
-      return;
-    setState((prev) => ({
-      ...prev,
-      characters: prev.characters.filter((c) => c.id !== id),
-    }));
-    if (settingsCharId === id) setSettingsCharId(null);
-  };
-
-  const toggleItemForCharacter = (charId: string, itemId: string) => {
-    setState((prev) => ({
-      ...prev,
-      characters: prev.characters.map((c) => {
-        if (c.id !== charId) return c;
-        const disabled = c.disabledItemIds.includes(itemId);
-        return {
-          ...c,
-          disabledItemIds: disabled
-            ? c.disabledItemIds.filter((id) => id !== itemId)
-            : [...c.disabledItemIds, itemId],
-        };
-      }),
-    }));
-  };
-
-  const addItem = (label: string, resetDay: ResetDay) => {
-    // 새 항목은 모든 캐릭터에서 기본 활성화 상태로 추가된다
-    setState((prev) => ({
-      ...prev,
-      items: [...prev.items, { id: newId("ti"), label, resetDay }],
-    }));
-    setShowAddItem(false);
-  };
-
-  const removeItem = (item: TodoItem) => {
     if (
       !window.confirm(
-        `'${item.label}' 항목을 삭제할까요? 체크 기록도 함께 사라집니다.`,
+        `'${target.name}' 캐릭터를 제거할까요? 보스수익의 보스 설정과 체크 기록이 함께 사라집니다.`,
       )
     ) {
       return;
     }
-    setState((prev) => ({
-      ...prev,
-      items: prev.items.filter((i) => i.id !== item.id),
-      characters: prev.characters.map((c) => ({
-        ...c,
-        disabledItemIds: c.disabledItemIds.filter((id) => id !== item.id),
-      })),
-    }));
+    onRemoveCharacter(id);
+    if (settingsCharId === id) setSettingsCharId(null);
   };
 
-  const settingsChar =
-    state.characters.find((c) => c.id === settingsCharId) ?? null;
+  const openBossTab = (characterId: string) => {
+    onSelectCharacter(characterId);
+    gotoHome();
+  };
+
+  const settingsChar = characters.find((c) => c.id === settingsCharId) ?? null;
 
   const gridStyle = {
-    "--todo-character-count": state.characters.length,
+    "--todo-character-count": characters.length,
   } as CSSProperties;
 
   return (
@@ -303,13 +209,18 @@ export function TodoPage() {
           </div>
         </div>
         <div className="todo-toolbar-actions">
+          {conflictCount > 0 && (
+            <button className="btn warn-chip" onClick={onOpenConflicts}>
+              API와 다른 캐릭터 {conflictCount}명 — 비교
+            </button>
+          )}
           {anyLinked && (
             <button
               className="btn ghost"
-              onClick={() => refreshSchedules(true)}
-              disabled={anyLoading}
+              onClick={onRefresh}
+              disabled={refreshing}
             >
-              {anyLoading ? "갱신 중…" : "현황 새로고침"}
+              {refreshing ? "갱신 중…" : "현황 새로고침"}
             </button>
           )}
           <button className="btn primary" onClick={() => setShowImport(true)}>
@@ -318,7 +229,7 @@ export function TodoPage() {
         </div>
       </div>
 
-      {state.characters.length === 0 ? (
+      {characters.length === 0 ? (
         <div className="empty-board">
           <h2>캐릭터를 추가해주세요</h2>
           <p>
@@ -335,8 +246,10 @@ export function TodoPage() {
           <div className="todo-grid" style={gridStyle}>
             {/* 헤더 행: 캐릭터 */}
             <div className="todo-corner" />
-            {state.characters.map((c) => {
-              const slot = schedules[c.id];
+            {characters.map((c) => {
+              const error = c.meta?.ocid
+                ? scheduleErrors[c.meta.ocid]
+                : undefined;
               const account = c.meta?.accountId
                 ? accountById.get(c.meta.accountId)
                 : undefined;
@@ -351,19 +264,12 @@ export function TodoPage() {
                   )}
                   {account && (
                     <span
-                      className={
-                        "todo-sync-badge" + (slot?.error ? " warn" : "")
-                      }
+                      className={"todo-sync-badge" + (error ? " warn" : "")}
                       title={
-                        slot?.error ??
-                        `'${account.label}' 계정 API로 자동 체크 중`
+                        error ?? `'${account.label}' 계정 API로 자동 체크 중`
                       }
                     >
-                      {slot?.error
-                        ? "연동 오류"
-                        : slot?.loading
-                          ? "조회 중…"
-                          : "API 연동"}
+                      {error ? "연동 오류" : refreshing ? "조회 중…" : "API 연동"}
                     </span>
                   )}
                   <div className="todo-char-actions">
@@ -387,16 +293,31 @@ export function TodoPage() {
             })}
 
             {/* 항목 행 */}
-            {state.items.map((item) => (
+            {todo.items.map((item) => (
               <TodoRow
                 key={item.id}
                 item={item}
-                characters={state.characters}
+                characters={characters}
                 isEnabled={isEnabled}
                 isChecked={isChecked}
                 autoProgress={autoProgress}
-                onToggle={toggleCheck}
-                onRemove={() => removeItem(item)}
+                onToggle={(target, character) =>
+                  onToggleCheck(
+                    target.id,
+                    character.id,
+                    weekKeys.get(target.id)!,
+                  )
+                }
+                onOpenBossTab={openBossTab}
+                onRemove={() => {
+                  if (
+                    window.confirm(
+                      `'${item.label}' 항목을 삭제할까요? 체크 기록도 함께 사라집니다.`,
+                    )
+                  ) {
+                    onRemoveItem(item.id);
+                  }
+                }}
               />
             ))}
 
@@ -413,26 +334,35 @@ export function TodoPage() {
 
       {showImport && (
         <ImportCharactersModal
-          accounts={state.accounts}
-          existingNames={state.characters.map((c) => c.name)}
-          existingOcids={state.characters
+          accounts={todo.accounts}
+          existingNames={characters.map((c) => c.name)}
+          existingOcids={characters
             .map((c) => c.meta?.ocid)
             .filter((o): o is string => Boolean(o))}
           onAddAccount={addAccount}
           onRemoveAccount={removeAccount}
-          onAddCharacters={addCharacters}
+          onAddCharacters={onAddCharacters}
           onAddSearched={addSearchedCharacter}
           onClose={() => setShowImport(false)}
         />
       )}
       {showAddItem && (
-        <AddItemModal onAdd={addItem} onClose={() => setShowAddItem(false)} />
+        <AddItemModal
+          onAdd={(label, resetDay) => {
+            onAddItem(label, resetDay);
+            setShowAddItem(false);
+          }}
+          onClose={() => setShowAddItem(false)}
+        />
       )}
       {settingsChar && (
         <CharacterSettingsModal
-          character={settingsChar}
-          items={state.items}
-          onToggle={(itemId) => toggleItemForCharacter(settingsChar.id, itemId)}
+          name={settingsChar.name}
+          items={todo.items}
+          disabledItemIds={todo.disabledItems[settingsChar.id] ?? []}
+          onToggle={(itemId) =>
+            onToggleItemForCharacter(settingsChar.id, itemId)
+          }
           onClose={() => setSettingsCharId(null)}
         />
       )}
@@ -447,17 +377,29 @@ function TodoRow({
   isChecked,
   autoProgress,
   onToggle,
+  onOpenBossTab,
   onRemove,
 }: {
   item: TodoItem;
-  characters: TodoCharacter[];
-  isEnabled(item: TodoItem, c: TodoCharacter): boolean;
-  isChecked(item: TodoItem, c: TodoCharacter): boolean;
+  characters: Character[];
+  isEnabled(item: TodoItem, c: Character): boolean;
+  isChecked(item: TodoItem, c: Character): boolean;
   autoProgress(
     item: TodoItem,
-    c: TodoCharacter,
-  ): { done: number; total: number; complete: boolean } | null;
-  onToggle(item: TodoItem, c: TodoCharacter): void;
+    c: Character,
+  ): {
+    done: number;
+    total: number;
+    complete: boolean;
+    /** 보스수익의 보스 선택과 같은 값인지 (클릭하면 그 탭으로 이동) */
+    linked: boolean;
+    /** API가 처치로 확인한 수 (판정 불가면 null) */
+    apiCount: number | null;
+    /** 내 선택 중 API가 확인해주지 않은 수 */
+    unverified: number;
+  } | null;
+  onToggle(item: TodoItem, c: Character): void;
+  onOpenBossTab(characterId: string): void;
   onRemove(): void;
 }) {
   return (
@@ -486,6 +428,39 @@ function TodoRow({
           );
         }
         const auto = autoProgress(item, c);
+        if (auto?.linked) {
+          return (
+            <button
+              key={c.id}
+              className={
+                "todo-cell auto linked" +
+                (auto.complete ? " done" : "") +
+                (auto.unverified > 0 ? " unverified" : "")
+              }
+              onClick={() => onOpenBossTab(c.id)}
+              title={
+                `${c.name} · ${item.label} — 보스수익의 보스 선택 ${auto.done}/${auto.total}` +
+                (auto.apiCount != null
+                  ? `\n넥슨 API 확인 ${auto.apiCount}개` +
+                    (auto.unverified > 0
+                      ? `\n내 선택 중 ${auto.unverified}개는 API가 확인하지 않았습니다.`
+                      : "")
+                  : "\n넥슨 API 대조 불가 (미조회 또는 축약 응답)") +
+                "\n클릭하면 보스수익에서 수정합니다."
+              }
+            >
+              <span className="todo-check-circle">
+                {auto.complete ? "✓" : ""}
+              </span>
+              <span className="todo-count">
+                {auto.done}/{auto.total}
+              </span>
+              {auto.unverified > 0 && (
+                <span className="todo-unverified">API {auto.apiCount}</span>
+              )}
+            </button>
+          );
+        }
         if (auto) {
           return (
             <div
@@ -951,13 +926,15 @@ function AddItemModal({
 }
 
 function CharacterSettingsModal({
-  character,
+  name,
   items,
+  disabledItemIds,
   onToggle,
   onClose,
 }: {
-  character: TodoCharacter;
+  name: string;
   items: TodoItem[];
+  disabledItemIds: string[];
   onToggle(itemId: string): void;
   onClose(): void;
 }) {
@@ -965,7 +942,7 @@ function CharacterSettingsModal({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal todo-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h2>{character.name} · 항목 설정</h2>
+          <h2>{name} · 항목 설정</h2>
           <button className="btn ghost sm" onClick={onClose}>
             닫기
           </button>
@@ -976,7 +953,7 @@ function CharacterSettingsModal({
         </p>
         <div className="todo-settings-list">
           {items.map((item) => {
-            const enabled = !character.disabledItemIds.includes(item.id);
+            const enabled = !disabledItemIds.includes(item.id);
             return (
               <label
                 key={item.id}

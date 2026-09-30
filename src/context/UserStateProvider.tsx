@@ -21,11 +21,14 @@ import {
   type AppState,
 } from "../lib/storage";
 import {
-  DEFAULT_TODO_ITEMS,
+  emptyTodoState,
   loadTodoState,
+  normalizeTodoState,
   writeTodoCache,
+  type LoadedTodoState,
   type TodoState,
 } from "../lib/todoStorage";
+import { unifyCharacters } from "../lib/unifyState";
 import {
   loadHistory,
   writeHistoryCache,
@@ -49,6 +52,7 @@ import {
   markCacheOwner,
   readCacheOwner,
   redactTodoKeys,
+  toStoredTodoState,
   type LegacyTodoState,
 } from "../lib/localMigration";
 import { authClient } from "../lib/auth";
@@ -93,8 +97,8 @@ export function UserStateProvider({
   const saving = useRef<Partial<Record<SyncScope, boolean>>>({});
   const channel = useRef<BroadcastChannel | null>(null);
   const rehydrate = useRef<() => void>(() => undefined);
-  /** 마지막으로 서버와 맞춘 calculator. 없으면 이번 접속 시작 시점의 캐시. */
-  const baseState = useRef<AppState>(readCalculatorBase(userId) ?? loadState());
+  /** 마지막으로 서버와 맞춘 calculator. 없으면 아직 기준이 없다. */
+  const baseState = useRef<AppState | null>(readCalculatorBase(userId));
   const hydrated = useRef(false);
   const pullGate = useRef(false);
 
@@ -171,23 +175,41 @@ export function UserStateProvider({
         writeCalculatorBase(userId, baseState.current);
       }
 
-      let todo: TodoState = importLocal
+      let todo: LoadedTodoState = importLocal
         ? redactTodoKeys(localTodo)
-        : {
-            items: [...DEFAULT_TODO_ITEMS],
-            characters: [],
-            checks: {},
-            accounts: [],
-          };
+        : emptyTodoState();
       if (remoteTodo.exists && remoteTodo.payload) {
-        todo = remoteTodo.payload;
+        todo = normalizeTodoState(remoteTodo.payload);
         revisions.current.todo = remoteTodo.revision;
       } else {
         if (importLocal && hasTodoData(localTodo)) {
           todo = await migrateAccounts(localTodo);
         }
-        const saved = await putRemoteState("todo", todo, 0);
+        const saved = await putRemoteState(
+          "todo",
+          toStoredTodoState(todo),
+          0,
+        );
         revisions.current.todo = saved.revision;
+      }
+
+      // 캐릭터 목록을 보스수익 한 곳으로 모은다 (v3 이전 저장분/서버 payload 이관)
+      const unified = unifyCharacters(calculator, todo);
+      calculator = unified.calculator;
+      let storedTodo = unified.todo;
+      if (unified.changed) {
+        const savedCalc = await putRemoteState(
+          "calculator",
+          calculator,
+          revisions.current.calculator,
+        );
+        revisions.current.calculator = savedCalc.revision;
+        const savedTodo = await putRemoteState(
+          "todo",
+          storedTodo,
+          revisions.current.todo,
+        );
+        revisions.current.todo = savedTodo.revision;
       }
 
       const remoteRecords = remoteHistory.records as WeekRecord[];
@@ -211,33 +233,48 @@ export function UserStateProvider({
           .map(putRemoteHistory),
       );
       if (pending.current.todo != null) {
-        todo = pending.current.todo as TodoState;
+        storedTodo = pending.current.todo as TodoState;
       }
       if (remoteCalc.exists && remoteCalc.payload) {
-        const localNow = normalizeAppState(
-          (pending.current.calculator as AppState | undefined) ?? loadState(),
-        );
         const remoteNow = normalizeAppState(calculator);
-        calculator = mergeCalculatorState(
-          baseState.current,
-          localNow,
-          remoteNow,
-        );
-        if (calculatorStateEqual(calculator, remoteNow)) {
+        const mergeLocal = shouldMergeLocalCalculator({
+          cacheOwner,
+          userId,
+          importDeclined:
+            isLegacyCache && localHasData && remoteIsEmpty && !importLocal,
+        });
+        if (!mergeLocal) {
+          calculator = remoteNow;
           delete pending.current.calculator;
           baseState.current = calculator;
           writeCalculatorBase(userId, calculator);
         } else {
-          pending.current.calculator = calculator;
+          const localNow = normalizeAppState(
+            (pending.current.calculator as AppState | undefined) ?? loadState(),
+          );
+          calculator = mergeCalculatorState(
+            baseState.current,
+            localNow,
+            remoteNow,
+          );
+          if (calculatorStateEqual(calculator, remoteNow)) {
+            delete pending.current.calculator;
+            baseState.current = calculator;
+            writeCalculatorBase(userId, calculator);
+          } else {
+            pending.current.calculator = calculator;
+          }
         }
-      } else if (pending.current.calculator != null) {
+      } else if (pending.current.calculator != null && importLocal) {
         calculator = normalizeAppState(pending.current.calculator as AppState);
+      } else if (!importLocal) {
+        delete pending.current.calculator;
       }
       writeStateCache(calculator);
-      writeTodoCache(todo);
+      writeTodoCache(storedTodo);
       writeHistoryCache(history);
       baselines.current.calculator = JSON.stringify(normalizeAppState(calculator));
-      baselines.current.todo = JSON.stringify(todo);
+      baselines.current.todo = JSON.stringify(storedTodo);
       markCacheOwner(userId);
       hydrated.current = true;
       if (pending.current.calculator != null) {
@@ -248,7 +285,7 @@ export function UserStateProvider({
       if (
         warmStart.current &&
         (localSnapshot.calculator !== JSON.stringify(calculator) ||
-          localSnapshot.todo !== JSON.stringify(todo) ||
+          localSnapshot.todo !== JSON.stringify(storedTodo) ||
           localSnapshot.history !== JSON.stringify(history))
       ) {
         setContentVersion((version) => version + 1);
@@ -687,7 +724,9 @@ export function UserStateProvider({
   );
 }
 
-async function migrateAccounts(local: LegacyTodoState): Promise<TodoState> {
+async function migrateAccounts(
+  local: LegacyTodoState,
+): Promise<LoadedTodoState> {
   const accounts = [];
   for (const account of local.accounts) {
     if (account.apiKey) {
@@ -704,7 +743,16 @@ async function migrateAccounts(local: LegacyTodoState): Promise<TodoState> {
         connected: account.connected ?? true,
       });
   }
-  return { ...local, accounts } as TodoState;
+  return { ...redactTodoKeys(local), accounts };
+}
+
+export function shouldMergeLocalCalculator(input: {
+  cacheOwner: string | null;
+  userId: string;
+  importDeclined: boolean;
+}): boolean {
+  if (input.importDeclined) return false;
+  return input.cacheOwner === input.userId;
 }
 
 export function mergeTodoChecks(

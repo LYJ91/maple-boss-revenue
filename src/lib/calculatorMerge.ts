@@ -1,20 +1,14 @@
 /**
- * calculator 문서의 3-way 병합.
- * base는 이 기기가 마지막으로 서버와 맞춘 스냅샷,
- * local은 이 기기의 현재 상태, remote는 서버 상태다.
- * 이 기기가 바꾸지 않은 값은 remote를 유지한다.
+ * calculator 문서 병합.
+ * base는 이 기기가 마지막으로 서버와 맞춘 스냅샷이다. null이면 아직 기준이 없다.
+ * 기준이 없으면 캐릭터와 보스 선택은 합치고, 삭제로 추론하지 않는다.
+ * 기준이 있으면 이 기기가 바꾸지 않은 값은 remote를 유지한다.
  */
 
-import type { BossEntry, Character } from "../types";
+import type { BossEntry, Character, WeeklyDecision } from "../types";
 import { normalizeAppState, type AppState } from "./storage";
 
-interface WeekCharacter extends Character {
-  weeklyConfirmedWeek?: string;
-  weeklyByWeek?: Record<string, BossEntry[]>;
-  weeklyDecisions?: Record<string, Record<string, string>>;
-  monthlyConfirmedMonth?: string;
-  monthlyScanMonth?: string;
-}
+type WeekCharacter = Character;
 
 const KNOWN_CHARACTER_KEYS = new Set([
   "id",
@@ -52,6 +46,24 @@ function same(a: unknown, b: unknown): boolean {
 function pick<T>(base: T, local: T, remote: T): T {
   if (same(local, base)) return remote;
   if (same(remote, base)) return local;
+  return local;
+}
+
+/**
+ * 파티 인원. base 값이 있으면 3-way.
+ * base 값이 없고 양쪽이 다르면, 한쪽만 1일 때 1이 아닌 값을 쓰고 둘 다 1이 아니면 local을 쓴다.
+ */
+function resolvePartySize(
+  base: number | undefined,
+  local: number | undefined,
+  remote: number | undefined,
+): number | undefined {
+  if (base !== undefined) return pick(base, local, remote);
+  if (local === undefined) return remote;
+  if (remote === undefined) return local;
+  if (local === remote) return local;
+  if (local === 1) return remote;
+  if (remote === 1) return local;
   return local;
 }
 
@@ -108,7 +120,7 @@ function mergeEntryFields(
     baseEntry?.clearsPerWeek ??
     1;
   const partySize =
-    pick(
+    resolvePartySize(
       partySizeValue(baseChar, bossId, baseEntry),
       partySizeValue(localChar, bossId, localEntry),
       partySizeValue(remoteChar, bossId, remoteEntry),
@@ -241,7 +253,7 @@ function mergeWeeklyDecisions(
   base: WeekCharacter | undefined,
   local: WeekCharacter,
   remote: WeekCharacter,
-): Record<string, Record<string, string>> | undefined {
+): Record<string, Record<string, WeeklyDecision>> | undefined {
   const baseWeeks = base?.weeklyDecisions;
   const localWeeks = local.weeklyDecisions;
   const remoteWeeks = remote.weeklyDecisions;
@@ -250,7 +262,7 @@ function mergeWeeklyDecisions(
     ...Object.keys(localWeeks ?? {}),
     ...Object.keys(remoteWeeks ?? {}),
   ]);
-  const merged: Record<string, Record<string, string>> = {};
+  const merged: Record<string, Record<string, WeeklyDecision>> = {};
   for (const week of weeks) {
     const baseMap = baseWeeks?.[week];
     const localMap = localWeeks?.[week];
@@ -264,6 +276,40 @@ function mergeWeeklyDecisions(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+function mergePartyPrefs(
+  baseChar: WeekCharacter | undefined,
+  localChar: WeekCharacter,
+  remoteChar: WeekCharacter,
+): Record<string, number> | undefined {
+  const keys = new Set([
+    ...Object.keys(baseChar?.partyPrefs ?? {}),
+    ...Object.keys(localChar.partyPrefs ?? {}),
+    ...Object.keys(remoteChar.partyPrefs ?? {}),
+  ]);
+  const merged: Record<string, number> = {};
+  for (const bossId of keys) {
+    const value = resolvePartySize(
+      partySizeValue(
+        baseChar,
+        bossId,
+        baseChar?.entries.find((entry) => entry.bossId === bossId),
+      ),
+      partySizeValue(
+        localChar,
+        bossId,
+        localChar.entries.find((entry) => entry.bossId === bossId),
+      ),
+      partySizeValue(
+        remoteChar,
+        bossId,
+        remoteChar.entries.find((entry) => entry.bossId === bossId),
+      ),
+    );
+    if (value !== undefined) merged[bossId] = value;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function mergeCharacter(
   base: WeekCharacter | undefined,
   local: WeekCharacter,
@@ -271,7 +317,7 @@ function mergeCharacter(
 ): WeekCharacter {
   const merged: WeekCharacter = {
     id: local.id,
-    name: pick(base?.name ?? local.name, local.name, remote.name),
+    name: pick(base?.name, local.name, remote.name) ?? local.name,
     entries: mergeEntries(
       base,
       local,
@@ -287,7 +333,7 @@ function mergeCharacter(
     remote.meta as Record<string, string | number> | undefined,
   );
   if (meta) merged.meta = meta as Character["meta"];
-  const partyPrefs = mergeFlat(base?.partyPrefs, local.partyPrefs, remote.partyPrefs);
+  const partyPrefs = mergePartyPrefs(base, local, remote);
   if (partyPrefs) merged.partyPrefs = partyPrefs;
   const weeklyConfirmedWeek = pick(
     base?.weeklyConfirmedWeek,
@@ -348,8 +394,16 @@ function mergeCharacters(
     const baseCharacter = baseMap.get(id);
     const localCharacter = localMap.get(id);
     const remoteCharacter = remoteMap.get(id);
-    // 기준에 있던 캐릭터를 어느 한쪽이라도 지웠으면 삭제가 이긴다.
-    if (baseCharacter && (!localCharacter || !remoteCharacter)) continue;
+    if (baseCharacter && !localCharacter && remoteCharacter) {
+      if (same(remoteCharacter, baseCharacter)) continue;
+      merged.push(remoteCharacter);
+      continue;
+    }
+    if (baseCharacter && localCharacter && !remoteCharacter) {
+      if (same(localCharacter, baseCharacter)) continue;
+      merged.push(localCharacter);
+      continue;
+    }
     if (!localCharacter && !remoteCharacter) continue;
     if (!localCharacter && remoteCharacter) {
       merged.push(remoteCharacter);
@@ -367,20 +421,20 @@ function mergeCharacters(
 }
 
 export function mergeCalculatorState(
-  base: AppState,
+  base: AppState | null,
   local: AppState,
   remote: AppState,
 ): AppState {
-  const baseState = normalizeAppState(base);
+  const baseState = base ? normalizeAppState(base) : null;
   const localState = normalizeAppState(local);
   const remoteState = normalizeAppState(remote);
   const characters = mergeCharacters(
-    baseState.characters,
+    baseState?.characters ?? [],
     localState.characters,
     remoteState.characters,
   );
   let selectedId = pick(
-    baseState.selectedId,
+    baseState?.selectedId ?? null,
     localState.selectedId,
     remoteState.selectedId,
   );

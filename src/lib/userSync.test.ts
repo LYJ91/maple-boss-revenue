@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decryptText, encryptText } from "../../api/_lib/crypto";
-import { mergeHistory, mergeTodoChecks } from "../context/UserStateProvider";
+import { mergeHistory, mergeTodoChecks, shouldMergeLocalCalculator } from "../context/UserStateProvider";
 import {
   backupLocalData,
   markCacheOwner,
@@ -36,6 +36,7 @@ describe("legacy migration", () => {
       items: [],
       characters: [],
       checks: {},
+      disabledItems: {},
       accounts: [{ id: "a", label: "본계정", apiKey: "live_secret" }],
     } satisfies LegacyTodoState;
     expect(redactTodoKeys(state).accounts).toEqual([
@@ -49,6 +50,7 @@ describe("legacy migration", () => {
       items: [],
       characters: [],
       checks: {},
+      disabledItems: {},
       accounts: [{ id: "a", label: "본계정", apiKey: "live_secret" }],
     };
     backupLocalData({ characters: [], selectedId: null }, todo, []);
@@ -67,12 +69,48 @@ describe("legacy migration", () => {
   });
 });
 
+describe("calculator hydrate source", () => {
+  it("다른 계정 캐시와 거절한 가져오기는 합치지 않는다", () => {
+    expect(
+      shouldMergeLocalCalculator({
+        cacheOwner: "other",
+        userId: "user-a",
+        importDeclined: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldMergeLocalCalculator({
+        cacheOwner: null,
+        userId: "user-a",
+        importDeclined: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldMergeLocalCalculator({
+        cacheOwner: "user-a",
+        userId: "user-a",
+        importDeclined: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("이 계정 캐시이고 기준이 없어도 로컬을 합친다", () => {
+    expect(
+      shouldMergeLocalCalculator({
+        cacheOwner: "user-a",
+        userId: "user-a",
+        importDeclined: false,
+      }),
+    ).toBe(true);
+  });
+});
+
 describe("conflict merging", () => {
   const empty: TodoState = {
     items: [],
-    characters: [],
     checks: {},
     accounts: [],
+    disabledItems: {},
   };
 
   it("merges todo checks by key and keeps the latest week", () => {

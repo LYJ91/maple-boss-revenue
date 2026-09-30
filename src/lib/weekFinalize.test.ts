@@ -280,4 +280,147 @@ describe("finalizePendingWeeks", () => {
     expect(locked?.revenue).toBe(777);
     expect(locked?.unrecoverable).toBe(false);
   });
+
+  it("주차별 스냅샷이 있으면 API 미완료로 지난 주 수익을 0으로 덮지 않는다", async () => {
+    const fetchScheduler = vi.fn().mockResolvedValue({
+      date: "2026-07-15",
+      weeklyBossClearCount: 12,
+      weeklyBossClearLimit: 12,
+      bosses: [
+        {
+          name: "스우",
+          difficulty: "hard",
+          cycle: "bossWeekly",
+          complete: false,
+        },
+        {
+          name: "윌",
+          difficulty: "hard",
+          cycle: "bossWeekly",
+          complete: false,
+        },
+      ],
+      contents: [],
+    });
+    vi.doMock("./scheduler", async () => {
+      const actual =
+        await vi.importActual<typeof import("./scheduler")>("./scheduler");
+      return { ...actual, fetchScheduler };
+    });
+    const { finalizePendingWeeks } = await import("./weekFinalize");
+    const character: Character = {
+      ...linked,
+      weeklyByWeek: {
+        "2026-07-09": [
+          {
+            bossId: "lotus",
+            difficulty: "hard",
+            partySize: 2,
+            clearsPerWeek: 7,
+          },
+        ],
+      },
+    };
+
+    const result = await finalizePendingWeeks(
+      [character],
+      new Date(2026, 6, 16, 12, 0, 0),
+    );
+
+    expect(result.finalizedWeeks).toContain("2026-07-09");
+    const past = loadHistory().find((r) => r.week === "2026-07-09");
+    expect(past?.finalized).toBe(true);
+    expect(past?.revenue).toBe(Math.floor(51_500_000 / 2));
+  });
+
+  it("이미 쌓인 이번 주 기록이 있으면 빈 API 확정으로 깎지 않는다", async () => {
+    const fetchScheduler = vi.fn().mockResolvedValue({
+      date: "2026-07-15",
+      weeklyBossClearCount: 12,
+      weeklyBossClearLimit: 12,
+      bosses: [
+        {
+          name: "스우",
+          difficulty: "hard",
+          cycle: "bossWeekly",
+          complete: false,
+        },
+      ],
+      contents: [],
+    });
+    vi.doMock("./scheduler", async () => {
+      const actual =
+        await vi.importActual<typeof import("./scheduler")>("./scheduler");
+      return { ...actual, fetchScheduler };
+    });
+    const { finalizePendingWeeks } = await import("./weekFinalize");
+    upsertWeekRecord({
+      week: "2026-07-09",
+      revenue: 12_345_678,
+      crystals: 8,
+      monthlyBossRevenue: 0,
+      characterCount: 1,
+      updatedAt: "2026-07-15T00:00:00.000Z",
+      finalized: false,
+    });
+
+    const result = await finalizePendingWeeks(
+      [linked],
+      new Date(2026, 6, 16, 12, 0, 0),
+    );
+
+    expect(result.finalizedWeeks).toContain("2026-07-09");
+    const past = loadHistory().find((r) => r.week === "2026-07-09");
+    expect(past?.revenue).toBe(12_345_678);
+    expect(past?.crystals).toBe(8);
+    expect(past?.finalized).toBe(true);
+  });
+
+  it("축약이어도 기존 주간 기록이 있으면 그 값으로 확정한다", async () => {
+    const fetchScheduler = vi.fn().mockResolvedValue({
+      date: "2026-07-15",
+      weeklyBossClearCount: 0,
+      weeklyBossClearLimit: 12,
+      bosses: [
+        {
+          name: "검은 마법사",
+          difficulty: "hard",
+          cycle: "bossMonthly",
+          complete: false,
+        },
+        {
+          name: "검은 마법사",
+          difficulty: "extreme",
+          cycle: "bossMonthly",
+          complete: false,
+        },
+      ],
+      contents: [],
+    });
+    vi.doMock("./scheduler", async () => {
+      const actual =
+        await vi.importActual<typeof import("./scheduler")>("./scheduler");
+      return { ...actual, fetchScheduler };
+    });
+    const { finalizePendingWeeks } = await import("./weekFinalize");
+    upsertWeekRecord({
+      week: "2026-07-09",
+      revenue: 555,
+      crystals: 2,
+      monthlyBossRevenue: 0,
+      characterCount: 1,
+      updatedAt: "2026-07-15T00:00:00.000Z",
+      finalized: false,
+    });
+
+    const result = await finalizePendingWeeks(
+      [linked],
+      new Date(2026, 6, 16, 12, 0, 0),
+    );
+
+    expect(result.finalizedWeeks).toContain("2026-07-09");
+    expect(loadHistory().find((r) => r.week === "2026-07-09")?.revenue).toBe(
+      555,
+    );
+  });
 });

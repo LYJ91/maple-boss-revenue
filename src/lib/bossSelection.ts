@@ -4,6 +4,14 @@ import {
   RULES,
 } from '../data/crystalData';
 import type { BossEntry, Character, Difficulty } from '../types';
+import {
+  isWeeklyEntry,
+  rememberWeekly,
+  weeklyDecisionsOf,
+  weeklyEntriesOf,
+  withWeeklyArchive,
+  withWeeklyDecisions,
+} from './weeklyBoss';
 
 /** 선택된 주간 보스 수 (UI와 12개 제한이 같은 기준을 사용) */
 export function weeklySelectionCount(character: Character): number {
@@ -17,19 +25,55 @@ export function toggleBossSelection(
   character: Character,
   bossId: string,
   difficulty: Difficulty,
+  month?: string,
+  week?: string,
 ): Character {
-  const existing = character.entries.find((entry) => entry.bossId === bossId);
+  const boss = BOSS_MAP.get(bossId);
+  const staleWeekly =
+    boss?.reset === "weekly" &&
+    week != null &&
+    character.weeklyConfirmedWeek != null &&
+    character.weeklyConfirmedWeek !== week;
+  const base = staleWeekly
+    ? {
+        ...character,
+        entries: character.entries.filter((entry) => !isWeeklyEntry(entry)),
+        weeklyByWeek: rememberWeekly(
+          character.weeklyByWeek,
+          character.weeklyConfirmedWeek!,
+          weeklyEntriesOf(character),
+          week,
+        ),
+      }
+    : character;
+  const existing = base.entries.find((entry) => entry.bossId === bossId);
+  const stampMonthly =
+    boss?.reset === "monthly" && month
+      ? { monthlyConfirmedMonth: month }
+      : {};
+  const stampWeekly =
+    boss?.reset === "weekly" && week
+      ? { weeklyConfirmedWeek: week }
+      : {};
+
   if (existing?.difficulty === difficulty) {
-    return {
-      ...character,
-      entries: character.entries.filter((entry) => entry.bossId !== bossId),
+    const next = {
+      ...base,
+      ...stampMonthly,
+      ...stampWeekly,
+      entries: base.entries.filter((entry) => entry.bossId !== bossId),
     };
+    if (!week || boss?.reset !== "weekly") return next;
+    // 직접 끈 보스는 API가 처치로 줘도 다시 켜지지 않도록 기억한다.
+    return withWeeklyArchive(
+      withWeeklyDecisions(next, week, { [bossId]: "excluded" }),
+      week,
+    );
   }
 
-  const boss = BOSS_MAP.get(bossId);
   if (!boss) return character;
   const requestedPartySize =
-    character.partyPrefs?.[bossId] ?? existing?.partySize ?? 1;
+    base.partyPrefs?.[bossId] ?? existing?.partySize ?? 1;
   const entry: BossEntry = {
     bossId,
     difficulty,
@@ -38,9 +82,17 @@ export function toggleBossSelection(
       existing?.clearsPerWeek ?? RULES.maxDailyClearsPerWeek,
   };
   const entries = existing
-    ? character.entries.map((current) =>
+    ? base.entries.map((current) =>
         current.bossId === bossId ? entry : current,
       )
-    : [...character.entries, entry];
-  return { ...character, entries };
+    : [...base.entries, entry];
+  const next = { ...base, ...stampMonthly, ...stampWeekly, entries };
+  if (!week || boss.reset !== "weekly") return next;
+  // 다시 켠 보스는 이전 '제외' 결정을 취소한다. API와의 차이는 비교 창에서 묻는다.
+  const cleared = weeklyDecisionsOf(next, week);
+  const { [bossId]: _removed, ...rest } = cleared;
+  return withWeeklyArchive(
+    { ...next, weeklyDecisions: { ...next.weeklyDecisions, [week]: rest } },
+    week,
+  );
 }
