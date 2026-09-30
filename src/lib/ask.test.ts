@@ -118,3 +118,99 @@ describe("planAsk", () => {
     expect(plan.reason).toContain("지원하는 질문이 아닙니다");
   });
 });
+
+describe("planFromFunctionCall", () => {
+  const linked = {
+    id: "c1",
+    name: NAME_A,
+    ocid: "ocid-1",
+    accountId: "acc-1",
+  };
+  const askContext = { characters: [linked], today: "2026-09-30" };
+
+  it("characterBasic 이름이 있으면 호출로 만든다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    expect(
+      planFromFunctionCall({ name: "characterBasic", args: { name: NAME_A } }, askContext),
+    ).toEqual({ kind: "call", call: { tool: "characterBasic", name: NAME_A } });
+  });
+
+  it("characterBasic 이름이 비어 있으면 거절한다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    expect(
+      planFromFunctionCall({ name: "characterBasic", args: { name: "  " } }, askContext).kind,
+    ).toBe("refuse");
+  });
+
+  it("revenue 는 캐릭터 id 가 없으면 계정 전체다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    expect(planFromFunctionCall({ name: "revenue", args: {} }, askContext)).toEqual({
+      kind: "call",
+      call: { tool: "revenue", characterId: null },
+    });
+  });
+
+  it("revenue 는 목록에 있는 캐릭터만 받는다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    expect(
+      planFromFunctionCall({ name: "revenue", args: { characterId: "c1" } }, askContext),
+    ).toEqual({ kind: "call", call: { tool: "revenue", characterId: "c1" } });
+    expect(
+      planFromFunctionCall({ name: "revenue", args: { characterId: "없는id" } }, askContext)
+        .kind,
+    ).toBe("refuse");
+  });
+
+  it("weeklyClear 는 연동 정보와 보스 id 를 채운다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    expect(
+      planFromFunctionCall(
+        { name: "weeklyClear", args: { characterId: "c1", bossId: boss.id } },
+        askContext,
+      ),
+    ).toEqual({
+      kind: "call",
+      call: {
+        tool: "weeklyClear",
+        characterId: "c1",
+        name: NAME_A,
+        ocid: "ocid-1",
+        accountId: "acc-1",
+        bossId: boss.id,
+      },
+    });
+  });
+
+  it("weeklyClear 는 연동이 없거나 없는 보스면 거절한다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    const unlinked = { characters: [{ id: "c1", name: NAME_A }], today: "2026-09-30" };
+    expect(
+      planFromFunctionCall(
+        { name: "weeklyClear", args: { characterId: "c1", bossId: boss.id } },
+        unlinked,
+      ).kind,
+    ).toBe("refuse");
+    expect(
+      planFromFunctionCall(
+        { name: "weeklyClear", args: { characterId: "없는", bossId: boss.id } },
+        askContext,
+      ).kind,
+    ).toBe("refuse");
+    expect(
+      planFromFunctionCall(
+        { name: "weeklyClear", args: { characterId: "c1", bossId: "없는보스" } },
+        askContext,
+      ).kind,
+    ).toBe("refuse");
+  });
+
+  it("알 수 없는 도구나 잘못된 인자는 거절한다", async () => {
+    const { planFromFunctionCall } = await import("../../api/_lib/askPlan");
+    expect(planFromFunctionCall({ name: "searchWeb", args: {} }, askContext).kind).toBe(
+      "refuse",
+    );
+    expect(planFromFunctionCall({ name: "revenue", args: "문자열" }, askContext).kind).toBe(
+      "refuse",
+    );
+  });
+});

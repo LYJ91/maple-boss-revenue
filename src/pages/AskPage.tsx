@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { BOSS_MAP } from "../data/crystalData";
-import { planAsk, type AskPlan } from "../lib/ask";
+import type { AskPlan } from "../lib/ask";
+import { requestAskPlan } from "../lib/askRemote";
 import { runAsk, type AskResult } from "../lib/askRun";
 import type { AccountSummary } from "../lib/calc";
 import { searchCharacter } from "../lib/nexon";
@@ -52,19 +53,31 @@ export function AskPage({
     const id = requestId.current + 1;
     requestId.current = id;
     setPending(true);
-    const nextPlan = planAsk(trimmed, { characters: askCharacters, today });
-    void runAsk(nextPlan, {
-      searchCharacter,
-      fetchScheduler,
-      summary,
-      bossMap: BOSS_MAP,
-      today,
-    }).then((next) => {
-      if (requestId.current !== id) return;
-      setPlan(nextPlan);
-      setResult(next);
-      setPending(false);
-    });
+    void requestAskPlan(trimmed, { characters: askCharacters, today })
+      .then((nextPlan) =>
+        runAsk(nextPlan, {
+          searchCharacter,
+          fetchScheduler,
+          summary,
+          bossMap: BOSS_MAP,
+          today,
+        }).then((next) => ({ nextPlan, next })),
+      )
+      .then(({ nextPlan, next }) => {
+        if (requestId.current !== id) return;
+        setPlan(nextPlan);
+        setResult(next);
+        setPending(false);
+      })
+      .catch((error: unknown) => {
+        if (requestId.current !== id) return;
+        setPlan(null);
+        setResult({
+          kind: "refuse",
+          reason: error instanceof Error ? error.message : "질의에 실패했습니다.",
+        });
+        setPending(false);
+      });
   };
 
   return (
@@ -72,7 +85,7 @@ export function AskPage({
       <h2>질의</h2>
       <p>
         경험치·레벨·직업·월드, 이번 주 수익, 연동 캐릭터의 보스 격파만 조회합니다.
-        언어 모델은 쓰지 않으며, 그 밖은 불가능하다고 답합니다.
+        질문은 Gemini가 도구를 고르고, 그 밖은 불가능하다고 답합니다.
       </p>
       <div className="search-row lookup-search">
         <input

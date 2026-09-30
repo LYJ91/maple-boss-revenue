@@ -38,3 +38,16 @@ export function bodyWithinLimit(body: unknown, maxBytes = 1_000_000): boolean {
     return false;
   }
 }
+
+const askCharacterSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(20),
+  ocid: z.string().trim().min(1).max(80).optional(),
+  accountId: z.string().trim().min(1).max(80).optional(),
+});
+
+export const askRequestSchema = z.object({
+  question: z.string().trim().min(1).max(500),
+  characters: z.array(askCharacterSchema).max(40),
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
