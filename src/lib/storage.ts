@@ -21,23 +21,60 @@ function withPartyPrefs(character: Character): Character {
     : character;
 }
 
+/** 세 문서를 비교하기 전에 같은 모양으로 맞춘다. 이미 있는 partyPrefs는 유지한다. */
+export function normalizeAppState(state: AppState): AppState {
+  const characters = (state.characters ?? []).map(withPartyPrefs);
+  return {
+    characters,
+    selectedId: state.selectedId ?? characters[0]?.id ?? null,
+  };
+}
+
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
-      if (Array.isArray(parsed.characters)) {
-        const characters = parsed.characters.map(withPartyPrefs);
-        return {
-          characters,
-          selectedId: parsed.selectedId ?? characters[0]?.id ?? null,
-        };
-      }
+      if (Array.isArray(parsed.characters)) return normalizeAppState(parsed);
     }
   } catch {
     // 손상된 저장 데이터는 무시하고 초기 상태로 시작
   }
   return { characters: [], selectedId: null };
+}
+
+const CALCULATOR_BASE_KEY = "maple-boss-revenue:calculator-base:v1";
+
+interface StoredCalculatorBase {
+  userId: string;
+  state: AppState;
+}
+
+/** 이 계정이 마지막으로 서버와 맞춘 calculator. 없으면 null. */
+export function readCalculatorBase(userId: string): AppState | null {
+  try {
+    const raw = localStorage.getItem(CALCULATOR_BASE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredCalculatorBase;
+    if (parsed.userId !== userId || !Array.isArray(parsed.state?.characters)) {
+      return null;
+    }
+    return normalizeAppState(parsed.state);
+  } catch {
+    return null;
+  }
+}
+
+export function writeCalculatorBase(userId: string, state: AppState): void {
+  try {
+    const stored: StoredCalculatorBase = {
+      userId,
+      state: normalizeAppState(state),
+    };
+    localStorage.setItem(CALCULATOR_BASE_KEY, JSON.stringify(stored));
+  } catch {
+    // 기준 스냅샷 저장 실패는 다음 접속의 병합 정확도만 낮춘다.
+  }
 }
 
 export function saveState(state: AppState): void {

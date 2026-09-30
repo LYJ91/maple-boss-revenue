@@ -7,7 +7,19 @@
   useState,
   type ReactNode,
 } from "react";
-import { loadState, writeStateCache, type AppState } from "../lib/storage";
+import {
+  calculatorStateEqual,
+  mergeCalculatorState,
+} from "../lib/calculatorMerge";
+import { pushMergedCalculator } from "../lib/calculatorSync";
+import {
+  loadState,
+  normalizeAppState,
+  readCalculatorBase,
+  writeCalculatorBase,
+  writeStateCache,
+  type AppState,
+} from "../lib/storage";
 import {
   DEFAULT_TODO_ITEMS,
   loadTodoState,
@@ -81,6 +93,10 @@ export function UserStateProvider({
   const saving = useRef<Partial<Record<SyncScope, boolean>>>({});
   const channel = useRef<BroadcastChannel | null>(null);
   const rehydrate = useRef<() => void>(() => undefined);
+  /** 마지막으로 서버와 맞춘 calculator. 없으면 이번 접속 시작 시점의 캐시. */
+  const baseState = useRef<AppState>(readCalculatorBase(userId) ?? loadState());
+  const hydrated = useRef(false);
+  const pullGate = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +104,7 @@ export function UserStateProvider({
       void hydrate().catch((error) => {
         if (!cancelled) {
           if (warmStart.current) {
+            hydrated.current = true;
             setSyncStatus({
               status: "offline",
               message: "저장된 화면을 표시 중이며 연결되면 다시 동기화합니다.",
@@ -150,6 +167,8 @@ export function UserStateProvider({
       } else {
         const saved = await putRemoteState("calculator", calculator, 0);
         revisions.current.calculator = saved.revision;
+        baseState.current = normalizeAppState(calculator);
+        writeCalculatorBase(userId, baseState.current);
       }
 
       let todo: TodoState = importLocal
@@ -191,18 +210,39 @@ export function UserStateProvider({
           )
           .map(putRemoteHistory),
       );
-      if (pending.current.calculator != null) {
-        calculator = pending.current.calculator as AppState;
-      }
       if (pending.current.todo != null) {
         todo = pending.current.todo as TodoState;
+      }
+      if (remoteCalc.exists && remoteCalc.payload) {
+        const localNow = normalizeAppState(
+          (pending.current.calculator as AppState | undefined) ?? loadState(),
+        );
+        const remoteNow = normalizeAppState(calculator);
+        calculator = mergeCalculatorState(
+          baseState.current,
+          localNow,
+          remoteNow,
+        );
+        if (calculatorStateEqual(calculator, remoteNow)) {
+          delete pending.current.calculator;
+          baseState.current = calculator;
+          writeCalculatorBase(userId, calculator);
+        } else {
+          pending.current.calculator = calculator;
+        }
+      } else if (pending.current.calculator != null) {
+        calculator = normalizeAppState(pending.current.calculator as AppState);
       }
       writeStateCache(calculator);
       writeTodoCache(todo);
       writeHistoryCache(history);
-      baselines.current.calculator = JSON.stringify(calculator);
+      baselines.current.calculator = JSON.stringify(normalizeAppState(calculator));
       baselines.current.todo = JSON.stringify(todo);
       markCacheOwner(userId);
+      hydrated.current = true;
+      if (pending.current.calculator != null) {
+        void saveScope("calculator");
+      }
       setSyncStatus({ status: "saved" });
       setReady(true);
       if (
@@ -227,8 +267,17 @@ export function UserStateProvider({
         event as CustomEvent<{ scope: SyncScope; payload: unknown }>
       ).detail;
       const serialized = JSON.stringify(payload);
-      if (serialized === baselines.current[scope]) return;
+      if (serialized === baselines.current[scope]) {
+        delete pending.current[scope];
+        if (timers.current[scope]) {
+          clearTimeout(timers.current[scope]);
+          delete timers.current[scope];
+        }
+        return;
+      }
       pending.current[scope] = payload;
+      // hydrate 전에는 옛 캐시로 서버 문서를 덮지 않는다.
+      if (scope === "calculator" && !hydrated.current) return;
       // 저장 중 들어온 변경은 실행 중인 drain 루프가 최신 값으로 이어서 처리한다.
       if (saving.current[scope]) return;
       if (timers.current[scope]) clearTimeout(timers.current[scope]);
@@ -254,6 +303,22 @@ export function UserStateProvider({
         rehydrate.current();
       }
     };
+    const flushCalculator = () => {
+      if (!hydrated.current || pending.current.calculator == null) return;
+      if (timers.current.calculator) {
+        clearTimeout(timers.current.calculator);
+        delete timers.current.calculator;
+      }
+      void saveScope("calculator");
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushCalculator();
+      else void pullCalculator();
+    };
+    const onFocus = () => {
+      void pullCalculator();
+    };
+    const onPageHide = () => flushCalculator();
     if ("BroadcastChannel" in window) {
       channel.current = new BroadcastChannel("maple-user-state");
       channel.current.onmessage = (
@@ -280,10 +345,16 @@ export function UserStateProvider({
     window.addEventListener(SYNC_EVENT, onChange);
     window.addEventListener(HISTORY_EVENT, onHistory);
     window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener(SYNC_EVENT, onChange);
       window.removeEventListener(HISTORY_EVENT, onHistory);
       window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
       for (const timer of Object.values(timers.current)) {
         if (timer) clearTimeout(timer);
       }
@@ -293,6 +364,7 @@ export function UserStateProvider({
   }, [ready, userId]);
 
   async function saveScope(scope: SyncScope) {
+    if (scope === "calculator" && !hydrated.current) return;
     if (saving.current[scope]) return;
     if (pending.current[scope] == null) return;
     saving.current[scope] = true;
@@ -316,6 +388,11 @@ export function UserStateProvider({
           );
           revisions.current[scope] = result.revision;
           baselines.current[scope] = serialized;
+          if (scope === "calculator") {
+            const synced = normalizeAppState(payload as AppState);
+            baseState.current = synced;
+            writeCalculatorBase(userId, synced);
+          }
           if (JSON.stringify(pending.current[scope]) === serialized) {
             delete pending.current[scope];
           }
@@ -369,29 +446,91 @@ export function UserStateProvider({
             }
           }
 
-          // 직렬화 후에도 남는 409만 실제 다른 탭/기기 충돌이다.
-          const force = window.confirm(
-            "다른 탭이나 기기에서 같은 데이터가 변경되었습니다. 현재 기기 데이터로 덮어쓸까요?\n취소하면 서버 데이터를 다시 불러옵니다.",
-          );
-          if (force) {
-            const result = await putRemoteState(
-              scope,
-              payload,
-              revisions.current[scope],
-              true,
-            );
-            revisions.current[scope] = result.revision;
-            baselines.current[scope] = serialized;
-            if (JSON.stringify(pending.current[scope]) === serialized) {
-              delete pending.current[scope];
+          if (scope === "calculator") {
+            const latest = (pending.current.calculator ?? payload) as AppState;
+            const remote = await getRemoteState<AppState>("calculator");
+            if (remote.exists && remote.payload) {
+              try {
+                const outcome = await pushMergedCalculator({
+                  base: baseState.current,
+                  local: latest,
+                  remote: {
+                    revision: remote.revision,
+                    state: remote.payload,
+                  },
+                  getRemote: async () => {
+                    const next = await getRemoteState<AppState>("calculator");
+                    if (!next.exists || !next.payload) {
+                      throw new Error("서버 계산기 데이터가 없습니다.");
+                    }
+                    return { revision: next.revision, state: next.payload };
+                  },
+                  put: (state, revision) =>
+                    putRemoteState("calculator", state, revision),
+                });
+                const latestSerialized = JSON.stringify(latest);
+                revisions.current.calculator = outcome.revision;
+                baseState.current = outcome.state;
+                writeCalculatorBase(userId, outcome.state);
+                if (
+                  JSON.stringify(pending.current.calculator) === latestSerialized
+                ) {
+                  delete pending.current.calculator;
+                  applyCachedScope(
+                    "calculator",
+                    outcome.state,
+                    outcome.revision,
+                  );
+                } else {
+                  const newer = pending.current.calculator as AppState;
+                  pending.current.calculator = mergeCalculatorState(
+                    latest,
+                    newer,
+                    outcome.state,
+                  );
+                }
+                channel.current?.postMessage({
+                  userId,
+                  scope,
+                  revision: outcome.revision,
+                  payload: outcome.state,
+                });
+                continue;
+              } catch (mergeError) {
+                if (handleAuthenticationFailure(mergeError)) return;
+                setSyncStatus({
+                  status: "offline",
+                  message: "연결되면 자동 재시도합니다.",
+                });
+                return;
+              }
             }
-            channel.current?.postMessage({
-              userId,
-              scope,
-              revision: result.revision,
-              payload,
-            });
-            continue;
+          }
+
+          if (scope !== "calculator") {
+            const force = window.confirm(
+              "다른 탭이나 기기에서 같은 데이터가 변경되었습니다. 현재 기기 데이터로 덮어쓸까요?\n취소하면 서버 데이터를 다시 불러옵니다.",
+            );
+            if (force) {
+              const result = await putRemoteState(
+                scope,
+                payload,
+                revisions.current[scope],
+                true,
+              );
+              revisions.current[scope] = result.revision;
+              baselines.current[scope] = serialized;
+              if (JSON.stringify(pending.current[scope]) === serialized) {
+                delete pending.current[scope];
+              }
+              channel.current?.postMessage({
+                userId,
+                scope,
+                revision: result.revision,
+                payload,
+              });
+              continue;
+            }
           }
 
           const remote = await getRemoteState(scope);
@@ -415,13 +554,76 @@ export function UserStateProvider({
     revision: number,
   ): void {
     if (scope === "calculator") {
-      writeStateCache(payload as AppState);
+      const normalized = normalizeAppState(payload as AppState);
+      writeStateCache(normalized);
+      baseState.current = normalized;
+      writeCalculatorBase(userId, normalized);
+      revisions.current.calculator = revision;
+      baselines.current.calculator = JSON.stringify(normalized);
     } else {
       writeTodoCache(payload as TodoState);
+      revisions.current.todo = revision;
+      baselines.current.todo = JSON.stringify(payload);
     }
-    revisions.current[scope] = revision;
-    baselines.current[scope] = JSON.stringify(payload);
     setContentVersion((version) => version + 1);
+  }
+
+  async function pullCalculator() {
+    if (!hydrated.current || saving.current.calculator || pullGate.current) {
+      return;
+    }
+    pullGate.current = true;
+    try {
+      const remote = await getRemoteState<AppState>("calculator");
+      if (!remote.exists || !remote.payload) return;
+      const local = normalizeAppState(
+        (pending.current.calculator as AppState | undefined) ?? loadState(),
+      );
+      const remoteState = normalizeAppState(remote.payload);
+      if (
+        remote.revision === revisions.current.calculator &&
+        calculatorStateEqual(local, remoteState) &&
+        pending.current.calculator == null
+      ) {
+        return;
+      }
+      const merged = mergeCalculatorState(
+        baseState.current,
+        local,
+        remoteState,
+      );
+      if (calculatorStateEqual(merged, remoteState)) {
+        if (
+          !calculatorStateEqual(local, merged) ||
+          remote.revision !== revisions.current.calculator
+        ) {
+          applyCachedScope("calculator", merged, remote.revision);
+        } else {
+          revisions.current.calculator = remote.revision;
+        }
+        baseState.current = merged;
+        writeCalculatorBase(userId, merged);
+        if (
+          pending.current.calculator != null &&
+          calculatorStateEqual(pending.current.calculator as AppState, local)
+        ) {
+          delete pending.current.calculator;
+        }
+        return;
+      }
+      revisions.current.calculator = remote.revision;
+      pending.current.calculator = merged;
+      await saveScope("calculator");
+    } catch (error) {
+      if (!handleAuthenticationFailure(error)) {
+        setSyncStatus({
+          status: "offline",
+          message: "연결되면 자동 재시도합니다.",
+        });
+      }
+    } finally {
+      pullGate.current = false;
+    }
   }
 
   function handleAuthenticationFailure(error: unknown): boolean {

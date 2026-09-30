@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadState } from './storage';
+import { loadState, readCalculatorBase, writeCalculatorBase } from './storage';
 
 const store = new Map<string, string>();
 beforeEach(() => {
@@ -55,5 +55,26 @@ describe('loadState partyPrefs 마이그레이션', () => {
     );
     const state = loadState();
     expect(state.characters[0].partyPrefs).toEqual({ lotus: 4 });
+  });
+});
+
+describe('calculator base snapshot', () => {
+  it('같은 계정의 마지막 서버 스냅샷만 읽는다', () => {
+    const snapshot = {
+      characters: [
+        {
+          id: 'c1',
+          name: '테스트',
+          entries: [
+            { bossId: 'lotus', difficulty: 'hard' as const, partySize: 4, clearsPerWeek: 7 },
+          ],
+          partyPrefs: { lotus: 4 },
+        },
+      ],
+      selectedId: 'c1',
+    };
+    writeCalculatorBase('user-a', snapshot);
+    expect(readCalculatorBase('user-a')?.characters[0].partyPrefs).toEqual({ lotus: 4 });
+    expect(readCalculatorBase('user-b')).toBeNull();
   });
 });
