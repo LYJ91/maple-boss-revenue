@@ -25,6 +25,31 @@ export function shouldReplaceMeta(
   );
 }
 
+/** 서버에 키가 있는 계정 id와 ocid가 있으면 스케줄러를 조회할 수 있다. */
+export function canQueryScheduler(character: {
+  meta?: { ocid?: string; accountId?: string } | null;
+}): boolean {
+  return Boolean(character.meta?.ocid && character.meta.accountId);
+}
+
+/**
+ * 계정 삭제 후 그 계정을 가리키던 연결만 끊는다.
+ * 캐릭터와 보스 선택, 주차 기록은 남긴다.
+ */
+export function unlinkAccount<T extends { meta?: CharacterMeta }>(
+  characters: T[],
+  accountId: string,
+): T[] {
+  let changed = false;
+  const next = characters.map((character) => {
+    if (character.meta?.accountId !== accountId) return character;
+    changed = true;
+    const { accountId: _removed, ...meta } = character.meta;
+    return { ...character, meta };
+  });
+  return changed ? next : characters;
+}
+
 export function applyLiveIdentity<T extends { name: string; meta?: CharacterMeta }>(
   character: T,
   live: LookupCharacter,
@@ -57,7 +82,13 @@ export function applyLiveIdentity<T extends { name: string; meta?: CharacterMeta
  */
 export function applyRosterToCharacters<
   T extends { name: string; meta?: CharacterMeta },
->(characters: T[], roster: LookupCharacter[], accountId: string): T[] {
+>(
+  characters: T[],
+  roster: LookupCharacter[],
+  accountId: string,
+  /** 이번 조회에서 계정별 명단이 가진 ocid. 없으면 단일 명단 규칙만 적용한다. */
+  ocidsByAccount?: ReadonlyMap<string, ReadonlySet<string>>,
+): T[] {
   if (roster.length === 0) return characters;
   const byOcid = new Map(roster.map((item) => [item.ocid, item]));
   const byName = new Map<string, LookupCharacter[]>();
@@ -69,14 +100,27 @@ export function applyRosterToCharacters<
 
   let changed = false;
   const next = characters.map((character) => {
+    const storedOcid = character.meta?.ocid;
+    if (storedOcid) {
+      const fromOcid = byOcid.get(storedOcid);
+      if (fromOcid) {
+        const storedAccountId = character.meta?.accountId;
+        const stillOwned =
+          storedAccountId != null &&
+          storedAccountId !== accountId &&
+          ocidsByAccount?.get(storedAccountId)?.has(storedOcid);
+        if (!stillOwned) {
+          const updated = applyLiveIdentity(character, fromOcid, accountId);
+          if (updated !== character) changed = true;
+          return updated;
+        }
+      }
+    }
     if (character.meta?.accountId && character.meta.accountId !== accountId) {
       return character;
     }
-    const fromOcid = character.meta?.ocid
-      ? byOcid.get(character.meta.ocid)
-      : undefined;
     const nameHits = byName.get(character.name) ?? [];
-    const live = fromOcid ?? (nameHits.length === 1 ? nameHits[0] : undefined);
+    const live = nameHits.length === 1 ? nameHits[0] : undefined;
     if (!live) return character;
     const updated = applyLiveIdentity(character, live, accountId);
     if (updated !== character) changed = true;
@@ -89,9 +133,15 @@ export function applyRosters<T extends { name: string; meta?: CharacterMeta }>(
   characters: T[],
   rosters: Map<string, LookupCharacter[]>,
 ): T[] {
+  const ocidsByAccount = new Map<string, ReadonlySet<string>>(
+    [...rosters].map(([accountId, roster]) => [
+      accountId,
+      new Set(roster.map((item) => item.ocid)),
+    ]),
+  );
   let next = characters;
   for (const [accountId, roster] of rosters) {
-    next = applyRosterToCharacters(next, roster, accountId);
+    next = applyRosterToCharacters(next, roster, accountId, ocidsByAccount);
   }
   return next;
 }

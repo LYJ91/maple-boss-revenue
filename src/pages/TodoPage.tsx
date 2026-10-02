@@ -14,6 +14,7 @@ import {
 import { AUTO_ITEM_PROGRESS, type SchedulerState } from "../lib/scheduler";
 import type { WeeklyVerification } from "../lib/bossConflict";
 import { RULES } from "../data/crystalData";
+import { canQueryScheduler } from "../lib/characterIdentity";
 import { weeklySelectionCount } from "../lib/weeklyBoss";
 import { CharacterAvatar } from "../components/CharacterAvatar";
 import { RESET_DAY_LABEL, weekKey } from "../lib/week";
@@ -76,10 +77,7 @@ export function TodoPage({
     [todo.accounts],
   );
 
-  const anyLinked = characters.some(
-    (c) =>
-      c.meta?.ocid && c.meta.accountId && accountById.has(c.meta.accountId),
-  );
+  const anyLinked = characters.some((c) => canQueryScheduler(c));
 
   // 항목별 현재 주차 키 (리셋 요일이 달라 항목마다 주차가 다를 수 있다)
   const weekKeys = useMemo(() => {

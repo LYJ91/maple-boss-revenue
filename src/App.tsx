@@ -36,7 +36,9 @@ import {
 import {
   applyLiveIdentity,
   applyRosters,
+  canQueryScheduler,
   loadAccountRosters,
+  unlinkAccount,
 } from "./lib/characterIdentity";
 import { searchCharacter, type LookupCharacter } from "./lib/nexon";
 import { createServerAccount, deleteServerAccount } from "./lib/sync";
@@ -443,19 +445,16 @@ export default function App() {
     .join("|");
   useEffect(() => {
     if (!identitiesReady) return;
-    const accounts = new Map(todo.accounts.map((a) => [a.id, a]));
     const retryTimers: number[] = [];
     const refresh = () => {
       for (const character of state.characters) {
-        const ocid = character.meta?.ocid;
-        const account = character.meta?.accountId
-          ? accounts.get(character.meta.accountId)
-          : undefined;
-        if (!ocid || !account) continue;
-        void fetchScheduler(ocid, account.id, { force: true })
+        if (!canQueryScheduler(character)) continue;
+        const ocid = character.meta!.ocid!;
+        const accountId = character.meta!.accountId!;
+        void fetchScheduler(ocid, accountId, { force: true })
           .then(async (scheduler) => {
             const confirmedMonth = monthKey(todayISO());
-            const scanKey = `${account.id}:${ocid}:${confirmedMonth}`;
+            const scanKey = `${accountId}:${ocid}:${confirmedMonth}`;
             if (
               needsMonthlyHistory(scheduler) &&
               shouldScanMonthly(character, confirmedMonth) &&
@@ -465,7 +464,7 @@ export default function App() {
               try {
                 const evidence = await findMonthlyEvidenceThisMonth(
                   ocid,
-                  account.id,
+                  accountId,
                   confirmedMonth,
                   todayISO(),
                 );
@@ -473,7 +472,7 @@ export default function App() {
                   const index = prev.characters.findIndex(
                     (item) =>
                       item.meta?.ocid === ocid &&
-                      item.meta?.accountId === account.id,
+                      item.meta?.accountId === accountId,
                   );
                   if (index < 0) return prev;
                   const current = prev.characters[index];
@@ -495,7 +494,7 @@ export default function App() {
             if (!schedulerReliability(scheduler).truncated) return;
             retryTimers.push(
               window.setTimeout(() => {
-                void fetchScheduler(ocid, account.id, { force: true }).catch(
+                void fetchScheduler(ocid, accountId, { force: true }).catch(
                   () => {},
                 );
               }, 3_000),
@@ -695,16 +694,14 @@ export default function App() {
       ...prev,
       accounts: prev.accounts.filter((a) => a.id !== id),
     }));
+    setState((prev) => {
+      const characters = unlinkAccount(prev.characters, id);
+      return characters === prev.characters ? prev : { ...prev, characters };
+    });
   };
 
   const refreshSchedules = async () => {
-    const accounts = new Set(todo.accounts.map((a) => a.id));
-    const targets = state.characters.filter(
-      (c) =>
-        c.meta?.ocid &&
-        c.meta.accountId &&
-        accounts.has(c.meta.accountId),
-    );
+    const targets = state.characters.filter((c) => canQueryScheduler(c));
     if (targets.length === 0) return;
     setRefreshing(true);
     setScheduleErrors({});
